@@ -1,0 +1,75 @@
+name: qms
+
+services:
+  qms-postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: ${QMS_DB_NAME:-qms}
+      POSTGRES_USER: ${QMS_DB_USER:-qms_app}
+      POSTGRES_PASSWORD: ${QMS_DB_PASSWORD:-qms_dev_password}
+    ports:
+      - "${QMS_DB_PORT:-5432}:5432"
+    volumes:
+      - qms-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${QMS_DB_USER:-qms_app} -d ${QMS_DB_NAME:-qms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qms-api:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+      FileStorage__RootPath: /data/qms-files
+    volumes:
+      - qms-files:/data/qms-files
+    depends_on:
+      qms-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  qms-worker:
+    build:
+      context: ..
+      dockerfile: deploy/worker.Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
+      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+      FileStorage__RootPath: /data/qms-files
+    volumes:
+      - qms-files:/data/qms-files
+    depends_on:
+      qms-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  qms-web:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    ports:
+      - "${QMS_WEB_PORT:-8080}:80"
+    depends_on:
+      - qms-api
+    restart: unless-stopped
+
+  qms-migrator:
+    build:
+      context: ..
+      dockerfile: deploy/migrator.Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
+      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+    depends_on:
+      qms-postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+
+volumes:
+  qms-postgres-data:
+  qms-files:

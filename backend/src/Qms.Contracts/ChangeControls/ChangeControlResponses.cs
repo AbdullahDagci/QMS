@@ -1,0 +1,11 @@
+using System.Text.Json;
+
+namespace Qms.Contracts.ChangeControls;
+
+public sealed record ChangeControlListItemResponse(Guid Id, string RecordNumber, Guid? SourceCapaId, string? SourceRecordNumber, string ChangeType, string Title, string Owner, DateTimeOffset TargetDateUtc, string RiskLevel, string RegulatoryImpact, string Status, int AssessmentCount, int CompletedAssessmentCount, int ActionCount, int VerifiedActionCount, DateTimeOffset CreatedAtUtc, long Version);
+public sealed record ChangeControlResponse(Guid Id, Guid QualityRecordId, string RecordNumber, Guid? SourceCapaId, string? SourceRecordNumber, string ChangeType, string Title, string CurrentState, string ProposedState, string Justification, string Scope, bool IsTemporary, DateTimeOffset? TemporaryUntilUtc, string Owner, DateTimeOffset TargetDateUtc, string RiskLevel, string RiskSummary, bool ProductImpact, bool SiteImpact, bool ValidationRequired, string RegulatoryImpact, string RollbackPlan, string? AuthorityApprovalReference, DateTimeOffset? CommissionedAtUtc, string? PostImplementationResult, string? ClosureNote, string Status, DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, DateTimeOffset? ClosedAtUtc, long Version);
+public sealed record ChangeAssessmentResponse(Guid Id, string Department, string Reviewer, string Status, string? ImpactSummary, string? RequiredActions, DateTimeOffset? CompletedAtUtc);
+public sealed record ChangeActionResponse(Guid Id, string Category, string Description, string Owner, DateTimeOffset TargetDateUtc, bool IsBlocking, string Status, string? CompletionEvidence, string? VerificationNote, DateTimeOffset? CompletedAtUtc, DateTimeOffset? VerifiedAtUtc);
+public sealed record ChangeAuditEventResponse(Guid Id, long Version, string EventType, string Actor, DateTimeOffset OccurredAtUtc, string? Reason, JsonElement Payload);
+public sealed record ChangeTransitionResponse(string Code, string Label, bool NoteRequired);
+public sealed record ChangeControlDetailsResponse(ChangeControlResponse Record, IReadOnlyList<ChangeAssessmentResponse> Assessments, IReadOnlyList<ChangeActionResponse> Actions, IReadOnlyList<ChangeAuditEventResponse> AuditTrail, IReadOnlyList<ChangeTransitionResponse> AvailableTransitions);

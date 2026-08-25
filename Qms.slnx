@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/backend/" />
+  <Folder Name="/backend/src/">
+    <Project Path="backend/src/Qms.Api/Qms.Api.csproj" />
+    <Project Path="backend/src/Qms.Application/Qms.Application.csproj" />
+    <Project Path="backend/src/Qms.Contracts/Qms.Contracts.csproj" />
+    <Project Path="backend/src/Qms.Domain/Qms.Domain.csproj" />
+    <Project Path="backend/src/Qms.Infrastructure/Qms.Infrastructure.csproj" />
+    <Project Path="backend/src/Qms.Migrator/Qms.Migrator.csproj" />
+    <Project Path="backend/src/Qms.Worker/Qms.Worker.csproj" />
+  </Folder>
+  <Folder Name="/backend/tests/">
+    <Project Path="backend/tests/Qms.Application.Tests/Qms.Application.Tests.csproj" />
+    <Project Path="backend/tests/Qms.ArchitectureTests/Qms.ArchitectureTests.csproj" />
+    <Project Path="backend/tests/Qms.Domain.Tests/Qms.Domain.Tests.csproj" />
+    <Project Path="backend/tests/Qms.IntegrationTests/Qms.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

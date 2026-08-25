@@ -1,0 +1,17 @@
+using System.Text.Json;using Qms.Contracts.Common;
+namespace Qms.Contracts.InternalAudits;
+public sealed record InternalAuditSearchRequest(int Page=1,int PageSize=25,string SortBy="createdAtUtc",string SortDirection="desc",IReadOnlyList<ColumnFilterRequest>?Filters=null);
+public sealed record ChecklistQuestionRequest(string Question,string Reference);
+public sealed record CreateInternalAuditRequest(int PlanYear,string Title,string AuditType,string Scope,string Objectives,string Criteria,string AuditeeDepartment,Guid LeadAuditorUserId,string LeadAuditor,string LeadAuditorDepartment,DateTimeOffset PlannedStartUtc,DateTimeOffset PlannedEndUtc,bool IsUnplanned,string?UnplannedReason,string ChecklistVersion,IReadOnlyList<ChecklistQuestionRequest>Questions);
+public sealed record TransitionInternalAuditRequest(long ExpectedVersion,string Transition,string?Note=null);
+public sealed record AnswerAuditQuestionRequest(long ExpectedVersion,string Status,string Evidence,string Note);
+public sealed record AddAuditFindingRequest(long ExpectedVersion,string Title,string Description,string RequirementReference,int Impact,int Likelihood,bool CapaRequired,string Owner,DateTimeOffset TargetDateUtc);
+public sealed record RespondAuditFindingRequest(long ExpectedVersion,string Response,string CorrectiveAction);
+public sealed record CloseAuditFindingRequest(long ExpectedVersion,string VerificationNote);
+public sealed record InternalAuditListItemResponse(Guid Id,string RecordNumber,int PlanYear,string Title,string AuditType,string AuditeeDepartment,string LeadAuditor,DateTimeOffset PlannedStartUtc,DateTimeOffset PlannedEndUtc,bool IsUnplanned,string Status,int FindingCount,int OpenFindingCount,DateTimeOffset CreatedAtUtc,long Version);
+public sealed record InternalAuditRecordResponse(Guid Id,Guid QualityRecordId,string RecordNumber,int PlanYear,string Title,string AuditType,string Scope,string Objectives,string Criteria,string AuditeeDepartment,Guid LeadAuditorUserId,string LeadAuditor,string LeadAuditorDepartment,DateTimeOffset PlannedStartUtc,DateTimeOffset PlannedEndUtc,bool IsUnplanned,string?UnplannedReason,string ChecklistVersion,DateTimeOffset?ChecklistLockedAtUtc,bool IndependenceConfirmed,string?Summary,string Status,DateTimeOffset CreatedAtUtc,DateTimeOffset UpdatedAtUtc,DateTimeOffset?ClosedAtUtc,long Version);
+public sealed record AuditChecklistItemResponse(Guid Id,int Order,string Question,string Reference,string Status,string?Evidence,string?Note,DateTimeOffset?AnsweredAtUtc);
+public sealed record AuditFindingResponse(Guid Id,string Number,string Title,string Description,string RequirementReference,int Impact,int Likelihood,int RiskScore,string Classification,bool CapaRequired,Guid?LinkedCapaId,string?LinkedCapaNumber,string Owner,DateTimeOffset TargetDateUtc,string?Response,string?CorrectiveAction,string?VerificationNote,string Status,DateTimeOffset CreatedAtUtc,DateTimeOffset?ClosedAtUtc);
+public sealed record InternalAuditEventResponse(Guid Id,long Version,string EventType,string Actor,DateTimeOffset OccurredAtUtc,string?Reason,JsonElement Payload);
+public sealed record InternalAuditTransitionResponse(string Code,string Label,bool NoteRequired);
+public sealed record InternalAuditDetailsResponse(InternalAuditRecordResponse Record,IReadOnlyList<AuditChecklistItemResponse>Checklist,IReadOnlyList<AuditFindingResponse>Findings,IReadOnlyList<InternalAuditEventResponse>AuditTrail,IReadOnlyList<InternalAuditTransitionResponse>AvailableTransitions);

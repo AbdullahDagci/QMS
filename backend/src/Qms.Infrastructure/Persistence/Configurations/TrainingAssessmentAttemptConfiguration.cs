@@ -1,0 +1,3 @@
+using Microsoft.EntityFrameworkCore;using Microsoft.EntityFrameworkCore.Metadata.Builders;using Qms.Domain.Trainings;
+namespace Qms.Infrastructure.Persistence.Configurations;
+public sealed class TrainingAssessmentAttemptConfiguration:IEntityTypeConfiguration<TrainingAssessmentAttempt>{public void Configure(EntityTypeBuilder<TrainingAssessmentAttempt>b){b.ToTable("assessment_attempt","training");b.HasKey(x=>x.Id);b.Property(x=>x.Score).HasPrecision(5,2);b.Property(x=>x.Evidence).HasMaxLength(2000).IsRequired();b.Property(x=>x.Evaluator).HasMaxLength(160).IsRequired();b.HasIndex(x=>new{x.TrainingAssignmentId,x.AttemptNumber}).IsUnique();}}

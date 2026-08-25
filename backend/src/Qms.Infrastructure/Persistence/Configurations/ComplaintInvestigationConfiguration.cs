@@ -1,0 +1,4 @@
+using Microsoft.EntityFrameworkCore;using Microsoft.EntityFrameworkCore.Metadata.Builders;using Qms.Domain.Complaints;
+namespace Qms.Infrastructure.Persistence.Configurations;
+public sealed class ComplaintInvestigationConfiguration:IEntityTypeConfiguration<ComplaintInvestigation>{public void Configure(EntityTypeBuilder<ComplaintInvestigation>b){b.ToTable("investigation","complaint");b.HasKey(x=>x.Id);b.Property(x=>x.Department).HasMaxLength(160).IsRequired();b.Property(x=>x.Investigator).HasMaxLength(160).IsRequired();b.Property(x=>x.Status).HasConversion<string>().HasMaxLength(30);b.Property(x=>x.Findings).HasMaxLength(4000);b.Property(x=>x.RootCauseContribution).HasMaxLength(2000);b.HasIndex(x=>new{x.ComplaintId,x.Department}).IsUnique();}}
+
