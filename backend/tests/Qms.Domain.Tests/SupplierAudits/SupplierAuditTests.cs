@@ -31,7 +31,7 @@ public sealed class SupplierAuditTests
     public void Critical_Finding_Suspends_Supplier_And_Open_Capa_Blocks_Result()
     {
         var audit = Create(); audit.Transition(1, "define-scope", Now); audit.Transition(2, "assign-auditor", Now); audit.Transition(3, "start-audit", Now); audit.Answer(4, audit.Checklist.Single().Id, SupplierAuditChecklistStatus.Nonconform, "VAL-04", "Validasyon boşluğu", Now);
-        var finding = SupplierAuditFinding.Create(audit.Id, "TDB-2026-000001", "Sterilizasyon validasyonu eksik", "Yeniden validasyon kanıtı sunulamadı.", "GMP Annex 1", SupplierAuditFindingClassification.Critical, true, Guid.NewGuid(), "Tedarikçi Kalite Müdürü", Now.AddDays(20), Now);
+        var finding = SupplierAuditFinding.Create(audit.Id, "TDB-2026-000001", "Sterilizasyon validasyonu eksik", "Yeniden validasyon kanıtı sunulamadı.", "GMP Annex 1", SupplierAuditFindingClassification.Critical, true, Guid.NewGuid(), Guid.NewGuid(), "Tedarikçi Kalite Müdürü", Now.AddDays(20), Now);
         audit.AddFinding(5, finding, Now);
         Assert.Equal(SupplierQualificationStatus.Suspended, audit.QualificationStatus);
         audit.Transition(6, "complete-audit", Now); audit.Transition(7, "request-supplier-response", Now); audit.RespondFinding(8, finding.Id, "Bulgu kabul edildi.", "Validasyon tekrar edilecek.", Now.AddDays(15), Now); audit.Transition(9, "start-verification", Now); audit.SubmitFindingEvidence(10, finding.Id, "Onaylı protokol ve ham veri paketi", Now); audit.Transition(11, "start-capa", Now);
@@ -42,5 +42,5 @@ public sealed class SupplierAuditTests
         Assert.Equal(SupplierAuditStatus.Closed, audit.Status);
     }
 
-    private static SupplierAudit Create(string criticality = "Yüksek", decimal performance = 80, int openFindings = 1) => SupplierAudit.Create(Guid.NewGuid(), null, "TED-0041", "Medikal Ambalaj A.Ş.", "Primer ambalaj", "Steril flakon tıpası", "Türkiye", criticality, performance, openFindings, "GMP ve tedarik sürekliliği", "İzmir Tesis", Guid.NewGuid(), "Ayşe Denetçi", "Kalite Güvence", "Satınalma Müdürü", Now.AddDays(10), Now.AddDays(12), "SA-2026.1", [("Kalite Sistemleri", "Değişiklikler müşteriye zamanında bildiriliyor mu?", "GMP Bölüm 5")], Now);
+    private static SupplierAudit Create(string criticality = "Yüksek", decimal performance = 80, int openFindings = 1) => SupplierAudit.Create(Guid.NewGuid(), null, "TED-0041", "Medikal Ambalaj A.Ş.", "Primer ambalaj", "Steril flakon tıpası", "Türkiye", criticality, performance, openFindings, "GMP ve tedarik sürekliliği", "İzmir Tesis", Guid.NewGuid(), "Ayşe Denetçi", "Kalite Güvence", Guid.NewGuid(), "Satınalma Müdürü", Guid.NewGuid(), "Kanıt Doğrulayıcı", Guid.NewGuid(), "Kalite Onaylayanı", Now.AddDays(10), Now.AddDays(12), "SA-2026.1", [("Kalite Sistemleri", "Değişiklikler müşteriye zamanında bildiriliyor mu?", "GMP Bölüm 5")], Now);
 }

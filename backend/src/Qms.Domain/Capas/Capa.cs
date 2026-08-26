@@ -14,6 +14,7 @@ public sealed class Capa
     public string RootCause { get; private set; } = string.Empty;
     public string ImmediateActions { get; private set; } = string.Empty;
     public string Owner { get; private set; } = string.Empty;
+    public Guid? OwnerUserId { get; private set; }
     public DateTimeOffset TargetDateUtc { get; private set; }
     public bool EffectivenessRequired { get; private set; }
     public string EffectivenessMethod { get; private set; } = string.Empty;
@@ -21,6 +22,7 @@ public sealed class Capa
     public int ObservationPeriodDays { get; private set; }
     public string SuccessCriteria { get; private set; } = string.Empty;
     public string EffectivenessEvaluator { get; private set; } = string.Empty;
+    public Guid? EffectivenessEvaluatorUserId { get; private set; }
     public DateTimeOffset? EffectivenessDueDateUtc { get; private set; }
     public bool? IsEffective { get; private set; }
     public string? EffectivenessResult { get; private set; }
@@ -32,18 +34,21 @@ public sealed class Capa
     public long Version { get; private set; }
     public IReadOnlyCollection<CapaAction> Actions => _actions;
 
-    public static Capa Create(Guid qualityRecordId, Guid? sourceDeviationId, string sourceType, string title, string description, string rootCause, string immediateActions, string owner, DateTimeOffset targetDateUtc, bool effectivenessRequired, string method, string sample, int observationDays, string criteria, string evaluator, DateTimeOffset now)
+    public static Capa Create(Guid qualityRecordId, Guid? sourceDeviationId, string sourceType, string title, string description, string rootCause, string immediateActions, Guid? ownerUserId, string owner, DateTimeOffset targetDateUtc, bool effectivenessRequired, string method, string sample, int observationDays, string criteria, Guid? evaluatorUserId, string evaluator, DateTimeOffset now)
     {
         Text(sourceType, nameof(sourceType), 80); Text(title, nameof(title), 200); Text(description, nameof(description), 4000); Text(rootCause, nameof(rootCause), 4000); Text(immediateActions, nameof(immediateActions), 2000); Text(owner, nameof(owner), 160);
         if (qualityRecordId == Guid.Empty) throw new ArgumentException("Kalite kaydı zorunludur.");
         if (targetDateUtc <= now) throw new ArgumentException("DÖF hedef tarihi gelecekte olmalıdır.");
         if (effectivenessRequired) { Text(method, nameof(method), 1000); Text(sample, nameof(sample), 1000); Text(criteria, nameof(criteria), 2000); Text(evaluator, nameof(evaluator), 160); if (observationDays < 1) throw new ArgumentException("Gözlem süresi en az bir gün olmalıdır."); }
-        return new Capa { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, SourceDeviationId = sourceDeviationId, SourceType = sourceType.Trim(), Title = title.Trim(), Description = description.Trim(), RootCause = rootCause.Trim(), ImmediateActions = immediateActions.Trim(), Owner = owner.Trim(), TargetDateUtc = targetDateUtc, EffectivenessRequired = effectivenessRequired, EffectivenessMethod = method.Trim(), EffectivenessSample = sample.Trim(), ObservationPeriodDays = observationDays, SuccessCriteria = criteria.Trim(), EffectivenessEvaluator = evaluator.Trim(), Status = CapaStatus.Draft, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
+        return new Capa { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, SourceDeviationId = sourceDeviationId, SourceType = sourceType.Trim(), Title = title.Trim(), Description = description.Trim(), RootCause = rootCause.Trim(), ImmediateActions = immediateActions.Trim(), OwnerUserId = ownerUserId, Owner = owner.Trim(), TargetDateUtc = targetDateUtc, EffectivenessRequired = effectivenessRequired, EffectivenessMethod = method.Trim(), EffectivenessSample = sample.Trim(), ObservationPeriodDays = observationDays, SuccessCriteria = criteria.Trim(), EffectivenessEvaluatorUserId = evaluatorUserId, EffectivenessEvaluator = evaluator.Trim(), Status = CapaStatus.Draft, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
     }
 
-    public void AddAction(long version, string type, string description, string owner, DateTimeOffset target, DateTimeOffset now) { EnsureVersion(version); if (Status is not (CapaStatus.Draft or CapaStatus.ActionPlanning)) throw new InvalidOperationException("Aksiyon yalnız taslak veya aksiyon planı aşamasında eklenebilir."); _actions.Add(CapaAction.Create(Id, type, description, owner, target, now)); Touch(now); }
-    public void RequestActionCompletion(long version, Guid actionId, string evidence, DateTimeOffset now) { EnsureVersion(version); EnsureStatus(CapaStatus.Implementation); Action(actionId).RequestCompletion(evidence, now); Touch(now); }
-    public void VerifyAction(long version, Guid actionId, bool approved, string note, DateTimeOffset now) { EnsureVersion(version); EnsureStatus(CapaStatus.ActionVerification); Action(actionId).Verify(approved, note, now); Touch(now); }
+    public static Capa Create(Guid qualityRecordId, Guid? sourceDeviationId, string sourceType, string title, string description, string rootCause, string immediateActions, string owner, DateTimeOffset targetDateUtc, bool effectivenessRequired, string method, string sample, int observationDays, string criteria, string evaluator, DateTimeOffset now) =>
+        Create(qualityRecordId, sourceDeviationId, sourceType, title, description, rootCause, immediateActions, null, owner, targetDateUtc, effectivenessRequired, method, sample, observationDays, criteria, null, evaluator, now);
+
+    public void AddAction(long version, string type, string description, Guid ownerUserId, string owner, DateTimeOffset target, DateTimeOffset now) { EnsureVersion(version); if (Status is not (CapaStatus.Draft or CapaStatus.ActionPlanning)) throw new InvalidOperationException("Aksiyon yalnız taslak veya aksiyon planı aşamasında eklenebilir."); _actions.Add(CapaAction.Create(Id, type, description, ownerUserId, owner, target, now)); Touch(now); }
+    public void RequestActionCompletion(long version, Guid actionId, string evidence, DateTimeOffset now) { EnsureVersion(version); EnsureStatus(CapaStatus.Implementation); Action(actionId).RequestCompletion(evidence, now); if (_actions.All(x => x.Status == CapaActionStatus.CompletionRequested)) Move(CapaStatus.ActionVerification, now); else Touch(now); }
+    public void VerifyAction(long version, Guid actionId, bool approved, string note, DateTimeOffset now) { EnsureVersion(version); EnsureStatus(CapaStatus.ActionVerification); Action(actionId).Verify(approved, note, now); if (!approved) { Move(CapaStatus.Implementation, now); return; } if (_actions.All(x => x.Status == CapaActionStatus.Verified)) { if (EffectivenessRequired) { EffectivenessDueDateUtc = now.AddDays(ObservationPeriodDays); Move(CapaStatus.EffectivenessWaiting, now); } else Move(CapaStatus.ClosureApproval, now); } else Touch(now); }
 
     public void Transition(long version, string transition, string? note, bool isEffective, DateTimeOffset now)
     {

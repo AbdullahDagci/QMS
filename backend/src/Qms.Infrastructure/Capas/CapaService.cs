@@ -1,7 +1,10 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.Capas;
@@ -10,15 +13,36 @@ using Qms.Contracts.Capas;
 using Qms.Contracts.Common;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.Capas;
+using Qms.Domain.ElectronicSignatures;
+using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
+using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Capas;
 
-public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser) : ICapaService
+public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, UserManager<ApplicationUser> userManager) : ICapaService
 {
     private static readonly Guid PrototypeDepartmentId = Guid.Parse("01991f70-6f40-7000-8000-000000000002");
+
+    public async Task<CapaLookupsResponse> GetLookupsAsync(CancellationToken cancellationToken)
+    {
+        var users = await (from user in dbContext.Users.AsNoTracking()
+                           join department in dbContext.Departments.AsNoTracking() on user.DepartmentId equals department.Id into departments
+                           from department in departments.DefaultIfEmpty()
+                           where user.IsActive
+                           orderby user.DisplayName
+                           select new CapaUserOptionResponse(user.Id, user.DisplayName, department == null ? null : department.Name))
+            .ToListAsync(cancellationToken);
+        var actionOwnerIds = await UserIdsInRolesAsync([QmsRoles.ActionOwner, QmsRoles.QualityAssurance], cancellationToken);
+        var evaluatorIds = await UserIdsInRolesAsync([QmsRoles.QualityAssurance], cancellationToken);
+        return new(
+            users.Where(x => actionOwnerIds.Contains(x.Id)).ToList(),
+            users.Where(x => evaluatorIds.Contains(x.Id)).ToList(),
+            ["Deviation", "Audit", "Complaint", "Risk", "Manual"],
+            ["Düzeltici", "Önleyici"]);
+    }
 
     public async Task<PagedResponse<CapaListItemResponse>> SearchAsync(CapaSearchRequest request, CancellationToken cancellationToken)
     {
@@ -63,9 +87,13 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
             x.Reason,
             x.Payload.RootElement.Clone())).ToList();
         var c = data.Capa;
-        var response = new CapaResponse(c.Id, c.QualityRecordId, data.RecordNumber, c.SourceDeviationId, data.SourceRecordNumber, c.SourceType, c.Title, c.Description, c.RootCause, c.ImmediateActions, c.Owner, c.TargetDateUtc, c.EffectivenessRequired, c.EffectivenessMethod, c.EffectivenessSample, c.ObservationPeriodDays, c.SuccessCriteria, c.EffectivenessEvaluator, c.EffectivenessDueDateUtc, c.IsEffective, c.EffectivenessResult, c.ClosureNote, c.Status.ToString(), c.CreatedAtUtc, c.UpdatedAtUtc, c.ClosedAtUtc, c.Version);
-        var actions = c.Actions.OrderBy(x => x.TargetDateUtc).Select(x => new CapaActionResponse(x.Id, x.ActionType, x.Description, x.Owner, x.TargetDateUtc, x.Status.ToString(), x.CompletionEvidence, x.VerificationNote, x.CompletedAtUtc, x.VerifiedAtUtc)).ToList();
-        return new(response, actions, audit, Transitions(c.Status));
+        var response = new CapaResponse(c.Id, c.QualityRecordId, data.RecordNumber, c.SourceDeviationId, data.SourceRecordNumber, c.SourceType, c.Title, c.Description, c.RootCause, c.ImmediateActions, c.OwnerUserId, c.Owner, c.TargetDateUtc, c.EffectivenessRequired, c.EffectivenessMethod, c.EffectivenessSample, c.ObservationPeriodDays, c.SuccessCriteria, c.EffectivenessEvaluatorUserId, c.EffectivenessEvaluator, c.EffectivenessDueDateUtc, c.IsEffective, c.EffectivenessResult, c.ClosureNote, c.Status.ToString(), c.CreatedAtUtc, c.UpdatedAtUtc, c.ClosedAtUtc, c.Version);
+        var actions = c.Actions.OrderBy(x => x.TargetDateUtc).Select(x => new CapaActionResponse(x.Id, x.ActionType, x.Description, x.OwnerUserId, x.Owner, x.TargetDateUtc, x.Status.ToString(), x.CompletionEvidence, x.VerificationNote, x.CompletedAtUtc, x.VerifiedAtUtc)).ToList();
+        var signatures = await dbContext.ElectronicSignatures.AsNoTracking().Where(x => x.QualityRecordId == c.QualityRecordId).OrderByDescending(x => x.SignedAtUtc)
+            .Select(x => new CapaSignatureResponse(x.Id, x.RecordVersion, x.SignerUserId, x.SignerDisplayNameSnapshot, x.Meaning, x.SignedAtUtc, x.ContentHash, x.Comment)).ToListAsync(cancellationToken);
+        var taskRole = RequiredTaskRole(c.Status);
+        var canTransition = taskRole is not null && await CanCurrentUserPerformAsync(id, taskRole, cancellationToken);
+        return new(response, actions, audit, signatures, canTransition ? Transitions(c.Status) : []);
     }
 
     public async Task<CapaDetailsResponse> CreateAsync(CreateCapaRequest request, CancellationToken cancellationToken)
@@ -81,15 +109,50 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         var sequence = await NextRecordNumberAsync(now.Year, tx, cancellationToken);
         var number = $"DÖF-{now.Year}-{sequence:000000}";
         var qr = QualityRecord.Create(number, "capa", currentUser.Id, currentUser.DepartmentId ?? PrototypeDepartmentId, now);
-        var capa = Capa.Create(qr.Id, request.SourceDeviationId, request.SourceType, request.Title, request.Description, request.RootCause, request.ImmediateActions, request.Owner, request.TargetDateUtc.ToUniversalTime(), request.EffectivenessRequired, request.EffectivenessMethod ?? "", request.EffectivenessSample ?? "", request.ObservationPeriodDays, request.SuccessCriteria ?? "", request.EffectivenessEvaluator ?? "", now);
-        dbContext.QualityRecords.Add(qr); dbContext.Capas.Add(capa); dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Capa", capa.Id, WorkflowTaskRoles.Initiator, currentUser.Id, currentUser.DepartmentId, now, capa.TargetDateUtc)); dbContext.AuditEvents.Add(Audit(capa, "CapaCreated", now, new { number, request.SourceDeviationId }));
+        var owner = await ActiveUserAsync(request.OwnerUserId, cancellationToken);
+        (Guid Id, string DisplayName)? evaluator = request.EffectivenessEvaluatorUserId is Guid evaluatorId ? await ActiveUserAsync(evaluatorId, cancellationToken) : null;
+        var capa = Capa.Create(qr.Id, request.SourceDeviationId, request.SourceType, request.Title, request.Description, request.RootCause, request.ImmediateActions, owner.Id, owner.DisplayName, request.TargetDateUtc.ToUniversalTime(), request.EffectivenessRequired, request.EffectivenessMethod ?? "", request.EffectivenessSample ?? "", request.ObservationPeriodDays, request.SuccessCriteria ?? "", evaluator?.Id, evaluator?.DisplayName ?? "", now);
+        dbContext.QualityRecords.Add(qr); dbContext.Capas.Add(capa); dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Capa", capa.Id, WorkflowTaskRoles.Initiator, currentUser.Id, currentUser.DepartmentId, now, capa.TargetDateUtc, assignedUserNameSnapshot: currentUser.DisplayName, assignedDepartmentNameSnapshot: await DepartmentNameAsync(currentUser.DepartmentId, cancellationToken))); dbContext.AuditEvents.Add(Audit(capa, "CapaCreated", now, new { number, request.SourceDeviationId, ownerUserId = owner.Id }));
         await dbContext.SaveChangesAsync(cancellationToken); await tx.CommitAsync(cancellationToken);
         return (await GetDetailsAsync(capa.Id, cancellationToken))!;
     }
 
-    public async Task<CapaDetailsResponse?> AddActionAsync(Guid id, AddCapaActionRequest request, CancellationToken ct) { await EnsureAssignedActorAsync(id, WorkflowTaskRoles.ProcessAuthority, ct); return await Mutate(id, ct, (c, now) => { c.AddAction(request.ExpectedVersion, request.ActionType, request.Description, request.Owner, request.TargetDateUtc.ToUniversalTime(), now); dbContext.CapaActions.Add(c.Actions.Last()); return ("CapaActionAdded", (object)new { request.ActionType, request.Owner }, (string?)null); }); }
-    public async Task<CapaDetailsResponse?> CompleteActionAsync(Guid id, Guid actionId, CompleteCapaActionRequest request, CancellationToken ct) { await EnsureAssignedActorAsync(id, WorkflowTaskRoles.ActionOwner, ct); return await Mutate(id, ct, (c, now) => { c.RequestActionCompletion(request.ExpectedVersion, actionId, request.Evidence, now); return ("CapaActionCompletionRequested", (object)new { actionId }, request.Evidence); }); }
-    public async Task<CapaDetailsResponse?> VerifyActionAsync(Guid id, Guid actionId, VerifyCapaActionRequest request, CancellationToken ct) { await EnsureAssignedActorAsync(id, WorkflowTaskRoles.Evaluator, ct); return await Mutate(id, ct, (c, now) => { c.VerifyAction(request.ExpectedVersion, actionId, request.Approved, request.Note, now); return ("CapaActionVerified", (object)new { actionId, request.Approved }, request.Note); }); }
+    public async Task<CapaDetailsResponse?> AddActionAsync(Guid id, AddCapaActionRequest request, CancellationToken ct) { await EnsureAssignedActorAsync(id, WorkflowTaskRoles.ProcessAuthority, ct); var owner = await ActiveUserAsync(request.OwnerUserId, ct); return await Mutate(id, ct, (c, now) => { c.AddAction(request.ExpectedVersion, request.ActionType, request.Description, owner.Id, owner.DisplayName, request.TargetDateUtc.ToUniversalTime(), now); dbContext.CapaActions.Add(c.Actions.Last()); return ("CapaActionAdded", (object)new { request.ActionType, ownerUserId = owner.Id, owner = owner.DisplayName }, (string?)null); }); }
+    public async Task<CapaDetailsResponse?> CompleteActionAsync(Guid id, Guid actionId, CompleteCapaActionRequest request, CancellationToken ct)
+    {
+        await EnsureAssignedActorAsync(id, ActionTaskRole(actionId), ct);
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (capa is null) return null;
+        var now = timeProvider.GetUtcNow(); var from = capa.Status; await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
+        capa.RequestActionCompletion(request.ExpectedVersion, actionId, request.Evidence, now);
+        await CompleteTasksAsync(id, ActionTaskRole(actionId), now, ct);
+        if (from != capa.Status && capa.Status == CapaStatus.ActionVerification)
+            await AssignRoleAsync(id, WorkflowTaskRoles.Evaluator, QmsRoles.QualityAssurance, null, now, capa.TargetDateUtc, ct);
+        dbContext.AuditEvents.Add(Audit(capa, "CapaActionCompletionRequested", now, new { actionId, from = from.ToString(), to = capa.Status.ToString() }, request.Evidence));
+        await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
+    }
+
+    public async Task<CapaDetailsResponse?> VerifyActionAsync(Guid id, Guid actionId, VerifyCapaActionRequest request, CancellationToken ct)
+    {
+        await EnsureAssignedActorAsync(id, WorkflowTaskRoles.Evaluator, ct);
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (capa is null) return null;
+        var qr = await dbContext.QualityRecords.SingleAsync(x => x.Id == capa.QualityRecordId, ct);
+        var now = timeProvider.GetUtcNow(); var from = capa.Status; await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
+        capa.VerifyAction(request.ExpectedVersion, actionId, request.Approved, request.Note, now);
+        if (!request.Approved)
+        {
+            await CompleteTasksAsync(id, WorkflowTaskRoles.Evaluator, now, ct);
+            var action = capa.Actions.Single(x => x.Id == actionId);
+            if (action.OwnerUserId is Guid ownerId) await AssignUserAsync(id, ActionTaskRole(actionId), ownerId, now, action.TargetDateUtc, ct);
+        }
+        else if (from != capa.Status)
+        {
+            await CompleteTasksAsync(id, WorkflowTaskRoles.Evaluator, now, ct);
+            await AssignNextCapaTaskAsync(capa, qr.CreatedByUserId, now, ct);
+        }
+        dbContext.AuditEvents.Add(Audit(capa, "CapaActionVerified", now, new { actionId, request.Approved, from = from.ToString(), to = capa.Status.ToString() }, request.Note));
+        await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
+    }
+
     public async Task<CapaDetailsResponse?> TransitionAsync(Guid id, TransitionCapaRequest request, CancellationToken ct)
     {
         var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct);
@@ -99,6 +162,7 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         var from = capa.Status;
         var transition = request.Transition.Trim().ToLowerInvariant();
         EnsureMakerChecker(qr, request.Transition);
+        await EnsureSignatureAuthenticationAsync(request, ct);
         var requiredTask = transition switch
         {
             "submit" => WorkflowTaskRoles.Initiator,
@@ -128,7 +192,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
                 break;
             case "approve-plan":
                 await CompleteTasksAsync(id, WorkflowTaskRoles.Approver, now, ct);
-                await AssignRoleAsync(id, WorkflowTaskRoles.ActionOwner, QmsRoles.ActionOwner, null, now, capa.TargetDateUtc, ct);
+                foreach (var action in capa.Actions)
+                    if (action.OwnerUserId is Guid ownerId) await AssignUserAsync(id, ActionTaskRole(action.Id), ownerId, now, action.TargetDateUtc, ct);
                 break;
             case "request-action-verification":
                 await CompleteTasksAsync(id, WorkflowTaskRoles.ActionOwner, now, ct);
@@ -148,6 +213,13 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
                 break;
         }
         dbContext.AuditEvents.Add(Audit(capa, "CapaStatusChanged", now, new { from = from.ToString(), to = capa.Status.ToString(), request.Transition }, request.Note));
+        if (IsApprovalTransition(transition))
+        {
+            var meaning = SignatureMeaning(transition);
+            var signedContent = $"Capa|{capa.Id}|{capa.Version}|{transition}|{request.Note?.Trim()}";
+            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signedContent)));
+            dbContext.ElectronicSignatures.Add(ElectronicSignature.Create(qr.Id, capa.Version, currentUser.Id, currentUser.DisplayName, meaning, now, contentHash, request.Note));
+        }
         await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
 
@@ -188,11 +260,50 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     }
     private AuditEvent Audit(Capa c, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("Capa", c.Id, c.Version, type, currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(payload), reason);
     private void EnsureMakerChecker(QualityRecord record, string transition) { var approval = transition.Trim().ToLowerInvariant() is "approve-scope" or "approve-root-cause" or "approve-plan" or "approve-actions" or "complete-effectiveness" or "close"; if (approval && record.CreatedByUserId == currentUser.Id && !currentUser.IsInRole(QmsRoles.Administrator)) throw new QmsForbiddenException("Görev ayrılığı kuralı: Kaydı oluşturan kullanıcı aynı DÖF kaydının onayını veremez."); }
-    private async Task EnsureAssignedActorAsync(Guid aggregateId, string taskRole, CancellationToken ct) { if (currentUser.IsInRole(QmsRoles.Administrator)) return; var assignments = await dbContext.WorkflowTaskAssignments.AsNoTracking().Where(item => item.AggregateType == "Capa" && item.AggregateId == aggregateId && item.TaskRole == taskRole && item.Status == WorkflowTaskStatus.Active).ToListAsync(ct); if (assignments.Count == 0) { EnsureFallbackTaskRole(taskRole); return; } if (assignments.Any(item => item.AssignedUserId == currentUser.Id)) return; var now = timeProvider.GetUtcNow(); var owners = assignments.Select(item => item.AssignedUserId).ToList(); var delegated = await dbContext.Delegations.AsNoTracking().AnyAsync(item => owners.Contains(item.DelegatorUserId) && item.DelegateUserId == currentUser.Id && item.RevokedAtUtc == null && item.StartsAtUtc <= now && item.EndsAtUtc >= now && (item.Scope == "ALL" || item.Scope == "M.02"), ct); if (!delegated) throw new QmsForbiddenException("Bu DÖF aksiyonu size veya etkin bir delegasyonla size atanmamış."); }
-    private void EnsureFallbackTaskRole(string taskRole) { var allowed = taskRole switch { WorkflowTaskRoles.Initiator or WorkflowTaskRoles.ProcessAuthority or WorkflowTaskRoles.Evaluator => currentUser.IsInRole(QmsRoles.QualityAssurance), WorkflowTaskRoles.ActionOwner => currentUser.IsInRole(QmsRoles.ActionOwner) || currentUser.IsInRole(QmsRoles.QualityAssurance), WorkflowTaskRoles.Approver or WorkflowTaskRoles.QualifiedPerson => currentUser.IsInRole(QmsRoles.Approver) || currentUser.IsInRole(QmsRoles.QualifiedPerson) || currentUser.IsInRole(QmsRoles.QualityAssurance), _ => false }; if (!allowed) throw new QmsForbiddenException("Bu aşama için gerekli kayıt görevi veya sistem rolü sizde bulunmuyor."); }
+    private async Task EnsureAssignedActorAsync(Guid aggregateId, string taskRole, CancellationToken ct) { if (!await CanCurrentUserPerformAsync(aggregateId, taskRole, ct)) throw new QmsForbiddenException("Bu DÖF görevi size veya etkin bir delegasyonla size atanmamış."); }
     private async Task CompleteTasksAsync(Guid aggregateId, string taskRole, DateTimeOffset now, CancellationToken ct) { var tasks = await dbContext.WorkflowTaskAssignments.Where(item => item.AggregateType == "Capa" && item.AggregateId == aggregateId && item.TaskRole == taskRole && item.Status == WorkflowTaskStatus.Active).ToListAsync(ct); foreach (var task in tasks) task.Complete(now); }
-    private async Task AssignRoleAsync(Guid aggregateId, string taskRole, string roleName, Guid? excludedUserId, DateTimeOffset now, DateTimeOffset? dueAt, CancellationToken ct) { var userId = await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id join user in dbContext.Users.AsNoTracking() on link.UserId equals user.Id where role.Name == roleName && user.IsActive && user.Id != excludedUserId orderby user.DisplayName select user.Id).FirstOrDefaultAsync(ct); if (userId == Guid.Empty) return; var departmentId = await dbContext.Users.Where(item => item.Id == userId).Select(item => item.DepartmentId).SingleAsync(ct); dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Capa", aggregateId, taskRole, userId, departmentId, now, dueAt)); }
+    private async Task AssignRoleAsync(Guid aggregateId, string taskRole, string roleName, Guid? excludedUserId, DateTimeOffset now, DateTimeOffset? dueAt, CancellationToken ct) { var userId = await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id join user in dbContext.Users.AsNoTracking() on link.UserId equals user.Id where role.Name == roleName && user.IsActive && user.Id != excludedUserId orderby user.DisplayName select user.Id).FirstOrDefaultAsync(ct); if (userId == Guid.Empty) throw new InvalidOperationException($"{roleName} rolünde atanabilir etkin kullanıcı bulunamadı."); await AssignUserAsync(aggregateId, taskRole, userId, now, dueAt, ct); }
     private Task AssignNextCapaTaskAsync(Capa capa, Guid creatorId, DateTimeOffset now, CancellationToken ct) => capa.Status switch { CapaStatus.EffectivenessWaiting or CapaStatus.EffectivenessReview => AssignRoleAsync(capa.Id, WorkflowTaskRoles.Evaluator, QmsRoles.QualityAssurance, creatorId, now, capa.EffectivenessDueDateUtc ?? capa.TargetDateUtc, ct), CapaStatus.ClosureApproval => AssignRoleAsync(capa.Id, WorkflowTaskRoles.Approver, QmsRoles.Approver, creatorId, now, capa.TargetDateUtc, ct), CapaStatus.ActionPlanning => AssignRoleAsync(capa.Id, WorkflowTaskRoles.ProcessAuthority, QmsRoles.QualityAssurance, creatorId, now, capa.TargetDateUtc, ct), _ => Task.CompletedTask };
+
+    private async Task AssignUserAsync(Guid aggregateId, string taskRole, Guid userId, DateTimeOffset now, DateTimeOffset? dueAt, CancellationToken ct)
+    {
+        var user = await (from candidate in dbContext.Users.AsNoTracking()
+                          join department in dbContext.Departments.AsNoTracking() on candidate.DepartmentId equals department.Id into departments
+                          from department in departments.DefaultIfEmpty()
+                          where candidate.Id == userId && candidate.IsActive
+                          select new { candidate.Id, candidate.DisplayName, candidate.DepartmentId, DepartmentName = department == null ? null : department.Name }).SingleOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("Görev için seçilen kullanıcı etkin değil.");
+        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Capa", aggregateId, taskRole, user.Id, user.DepartmentId, now, dueAt, assignedUserNameSnapshot: user.DisplayName, assignedDepartmentNameSnapshot: user.DepartmentName));
+        var recordNumber = await (from capa in dbContext.Capas.AsNoTracking() join qr in dbContext.QualityRecords.AsNoTracking() on capa.QualityRecordId equals qr.Id where capa.Id == aggregateId select qr.RecordNumber).SingleAsync(ct);
+        dbContext.UserNotifications.Add(UserNotification.Create(user.Id, "M.02", "Yeni DÖF görevi atandı", $"{recordNumber} için {TaskRoleLabel(taskRole)} görevi size atandı.", $"/modules/m02?open={aggregateId}", now));
+    }
+
+    private async Task<bool> CanCurrentUserPerformAsync(Guid aggregateId, string taskRole, CancellationToken ct)
+    {
+        var owners = await dbContext.WorkflowTaskAssignments.AsNoTracking().Where(x => x.AggregateType == "Capa" && x.AggregateId == aggregateId && x.TaskRole == taskRole && x.Status == WorkflowTaskStatus.Active).Select(x => x.AssignedUserId).ToListAsync(ct);
+        if (owners.Contains(currentUser.Id)) return true;
+        if (owners.Count == 0) return false;
+        var now = timeProvider.GetUtcNow();
+        return await dbContext.Delegations.AsNoTracking().AnyAsync(x => owners.Contains(x.DelegatorUserId) && x.DelegateUserId == currentUser.Id && x.RevokedAtUtc == null && x.StartsAtUtc <= now && x.EndsAtUtc >= now && (x.Scope == "ALL" || x.Scope == "M.02"), ct);
+    }
+
+    private async Task EnsureSignatureAuthenticationAsync(TransitionCapaRequest request, CancellationToken ct)
+    {
+        if (!IsApprovalTransition(request.Transition)) return;
+        if (!request.SignatureMeaningAccepted) throw new QmsForbiddenException("Elektronik imza anlamı açıkça kabul edilmelidir.");
+        if (string.IsNullOrWhiteSpace(request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza için parola yeniden girilmelidir.");
+        var user = await userManager.FindByIdAsync(currentUser.Id.ToString());
+        if (user is null || !user.IsActive || !await userManager.CheckPasswordAsync(user, request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız.");
+    }
+
+    private async Task<HashSet<Guid>> UserIdsInRolesAsync(string[] roles, CancellationToken ct) => (await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id where roles.Contains(role.Name!) select link.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+    private async Task<(Guid Id, string DisplayName)> ActiveUserAsync(Guid id, CancellationToken ct) { var user = await dbContext.Users.AsNoTracking().Where(x => x.Id == id && x.IsActive).Select(x => new { x.Id, x.DisplayName }).SingleOrDefaultAsync(ct) ?? throw new ArgumentException("Seçilen kullanıcı etkin değil veya bulunamadı."); return (user.Id, user.DisplayName); }
+    private async Task<string?> DepartmentNameAsync(Guid? id, CancellationToken ct) => id is Guid departmentId ? await dbContext.Departments.AsNoTracking().Where(x => x.Id == departmentId).Select(x => x.Name).SingleOrDefaultAsync(ct) : null;
+    private static string ActionTaskRole(Guid actionId) => $"ActionOwner:{actionId:N}";
+    private static string TaskRoleLabel(string role) => role.StartsWith("ActionOwner:", StringComparison.Ordinal) ? "aksiyon sorumlusu" : role switch { WorkflowTaskRoles.Initiator => "başlatan", WorkflowTaskRoles.ProcessAuthority => "plan sorumlusu", WorkflowTaskRoles.Evaluator => "KG doğrulayıcısı", WorkflowTaskRoles.Approver => "onaylayan", _ => role };
+    private static bool IsApprovalTransition(string transition) => transition.Trim().ToLowerInvariant() is "approve-scope" or "approve-root-cause" or "approve-plan" or "approve-actions" or "complete-effectiveness" or "close";
+    private static string SignatureMeaning(string transition) => transition.Trim().ToLowerInvariant() switch { "approve-scope" => "DÖF kapsam onayı", "approve-root-cause" => "DÖF kök neden onayı", "approve-plan" => "DÖF aksiyon planı onayı", "approve-actions" => "DÖF aksiyon doğrulama onayı", "complete-effectiveness" => "DÖF etkinlik değerlendirmesi", "close" => "DÖF nihai kapanış onayı", _ => "DÖF iş akışı onayı" };
+    private static string? RequiredTaskRole(CapaStatus status) => status switch { CapaStatus.Draft => WorkflowTaskRoles.Initiator, CapaStatus.ScopeApproval or CapaStatus.RootCauseApproval or CapaStatus.PlanApproval or CapaStatus.ClosureApproval => WorkflowTaskRoles.Approver, CapaStatus.ActionPlanning => WorkflowTaskRoles.ProcessAuthority, CapaStatus.ActionVerification or CapaStatus.EffectivenessWaiting or CapaStatus.EffectivenessReview => WorkflowTaskRoles.Evaluator, _ => null };
     private async Task<long> NextRecordNumberAsync(int year, IDbContextTransaction tx, CancellationToken ct)
     {
         var connection = dbContext.Database.GetDbConnection(); if (connection.State != ConnectionState.Open) await connection.OpenAsync(ct);

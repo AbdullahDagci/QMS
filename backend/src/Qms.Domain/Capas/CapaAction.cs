@@ -9,6 +9,7 @@ public sealed class CapaAction
     public string ActionType { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public string Owner { get; private set; } = string.Empty;
+    public Guid? OwnerUserId { get; private set; }
     public DateTimeOffset TargetDateUtc { get; private set; }
     public CapaActionStatus Status { get; private set; }
     public string? CompletionEvidence { get; private set; }
@@ -17,13 +18,14 @@ public sealed class CapaAction
     public DateTimeOffset? VerifiedAtUtc { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
-    internal static CapaAction Create(Guid capaId, string actionType, string description, string owner, DateTimeOffset targetDateUtc, DateTimeOffset now)
+    internal static CapaAction Create(Guid capaId, string actionType, string description, Guid ownerUserId, string owner, DateTimeOffset targetDateUtc, DateTimeOffset now)
     {
         Validate(actionType, nameof(actionType), 80);
         Validate(description, nameof(description), 2000);
         Validate(owner, nameof(owner), 160);
         if (targetDateUtc <= now) throw new ArgumentException("Aksiyon hedef tarihi gelecekte olmalıdır.");
-        return new CapaAction { Id = Guid.CreateVersion7(), CapaId = capaId, ActionType = actionType.Trim(), Description = description.Trim(), Owner = owner.Trim(), TargetDateUtc = targetDateUtc, Status = CapaActionStatus.Planned, CreatedAtUtc = now };
+        if (ownerUserId == Guid.Empty) throw new ArgumentException("Aksiyon sorumlusu kullanıcı seçilmelidir.");
+        return new CapaAction { Id = Guid.CreateVersion7(), CapaId = capaId, ActionType = actionType.Trim(), Description = description.Trim(), OwnerUserId = ownerUserId, Owner = owner.Trim(), TargetDateUtc = targetDateUtc, Status = CapaActionStatus.Planned, CreatedAtUtc = now };
     }
 
     internal void RequestCompletion(string evidence, DateTimeOffset now)

@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Qms.Api.Security;
 
@@ -19,6 +21,20 @@ public sealed class DevelopmentAuthenticationHandler(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        var token = Request.Headers.Authorization.FirstOrDefault();
+        if (token?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var raw = token[7..].Trim();
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+            var now = DateTimeOffset.UtcNow;
+            var sessionUser = await (from session in dbContext.UserSessions.AsNoTracking()
+                                     join user in dbContext.Users.AsNoTracking() on session.UserId equals user.Id
+                                     where session.TokenHash == hash && session.RevokedAtUtc == null && session.ExpiresAtUtc > now && user.IsActive
+                                     select user).SingleOrDefaultAsync(Context.RequestAborted);
+            if (sessionUser is null) return AuthenticateResult.Fail("Geçersiz veya süresi dolmuş oturum.");
+            var sessionRoles = await (from ur in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on ur.RoleId equals role.Id where ur.UserId == sessionUser.Id select role.Name!).ToListAsync(Context.RequestAborted);
+            return Success(sessionUser, sessionUser.ProfileKey ?? sessionUser.Id.ToString(), sessionRoles);
+        }
         var profileKey = Request.Headers["X-QMS-Profile"].FirstOrDefault()?.Trim().ToLowerInvariant() ?? "quality";
         var fallback = DevelopmentProfiles.Resolve(profileKey);
         ApplicationUser? stored = null;
@@ -38,15 +54,18 @@ public sealed class DevelopmentAuthenticationHandler(
         {
             Logger.LogWarning(exception, "Geliştirme kullanıcı profilleri veritabanından okunamadı; yerleşik profil kullanılıyor.");
         }
-        var userId = stored?.Id ?? fallback.UserId;
-        var displayName = stored?.DisplayName ?? fallback.DisplayName;
-        var departmentId = stored?.DepartmentId ?? fallback.DepartmentId;
+        var fallbackUser = stored ?? new ApplicationUser { Id = fallback.UserId, DisplayName = fallback.DisplayName, DepartmentId = fallback.DepartmentId };
+        return Success(fallbackUser, profileKey, roles);
+    }
+
+    private AuthenticateResult Success(ApplicationUser user, string profileKey, IReadOnlyList<string> roles)
+    {
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, userId.ToString()),
-            new(ClaimTypes.Name, displayName),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName),
             new("qms_profile", profileKey),
-            new("qms_department", departmentId.ToString())
+            new("qms_department", user.DepartmentId?.ToString() ?? string.Empty)
         };
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         var identity = new ClaimsIdentity(claims, SchemeName);

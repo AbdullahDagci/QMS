@@ -5,4 +5,6 @@ public sealed record TransitionDeviationRequest(
     long ExpectedVersion,
     string? Note = null,
     bool EffectivenessRequired = false,
-    bool IsEffective = false);
+    bool IsEffective = false,
+    string? SignaturePassword = null,
+    bool SignatureMeaningAccepted = false);

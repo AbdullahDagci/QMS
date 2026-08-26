@@ -16,6 +16,9 @@ public sealed class ControlledDocumentConfiguration : IEntityTypeConfiguration<C
         builder.Property(x => x.Version).IsConcurrencyToken();
         builder.HasIndex(x => x.QualityRecordId).IsUnique(); builder.HasIndex(x => x.DocumentCode).IsUnique(); builder.HasIndex(x => x.SourceChangeControlId);
         builder.HasIndex(x => new { x.Status, x.NextReviewDateUtc });
+        builder.HasIndex(x => x.OwnerUserId); builder.HasIndex(x => x.DepartmentId);
+        builder.HasOne<Qms.Infrastructure.Identity.ApplicationUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Qms.Domain.Organization.Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Qms.Domain.QualityRecords.QualityRecord>().WithMany().HasForeignKey(x => x.QualityRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Qms.Domain.ChangeControls.ChangeControl>().WithMany().HasForeignKey(x => x.SourceChangeControlId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(x => x.Revisions).WithOne().HasForeignKey(x => x.ControlledDocumentId).OnDelete(DeleteBehavior.Cascade);

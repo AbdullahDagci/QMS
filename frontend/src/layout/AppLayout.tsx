@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   Avatar,
+  Badge,
   Box,
   Drawer,
   Button,
@@ -25,14 +26,33 @@ import {
 import { GlobalNetworkLoader } from '../components/GlobalNetworkLoader'
 import { administrationItem, allNavigationItems, dashboardItem, navigationGroups } from '../navigation'
 import { Permissions, useAuth } from '../security/AuthContext'
+import { getNotifications, markAllNotificationsRead, markNotificationRead, type NotificationList } from '../api/notifications'
 
 export function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null)
+  const [notificationAnchor, setNotificationAnchor] = useState<HTMLElement | null>(null)
+  const [notifications, setNotifications] = useState<NotificationList>({ unreadCount: 0, items: [] })
   const location = useLocation()
-  const { user, selectProfile, can } = useAuth()
+  const navigate = useNavigate()
+  const { user, can } = useAuth()
+  const { logout } = useAuth()
   const currentItem = allNavigationItems.find((item) =>
     item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path))
+
+  const refreshNotifications = () => getNotifications().then(setNotifications).catch(() => undefined)
+  useEffect(() => {
+    refreshNotifications()
+    const timer = window.setInterval(refreshNotifications, 30_000)
+    return () => window.clearInterval(timer)
+  }, [user.profile])
+
+  const openNotification = async (item: NotificationList['items'][number]) => {
+    if (!item.readAtUtc) await markNotificationRead(item.id)
+    setNotificationAnchor(null)
+    await refreshNotifications()
+    if (item.link) navigate(item.link)
+  }
 
   return (
     <Box className="application-shell">
@@ -87,8 +107,22 @@ export function AppLayout() {
               }}
             />
             <Tooltip title="Bildirimler">
-              <IconButton aria-label="Bildirimler"><NotificationsNoneRounded /></IconButton>
+              <IconButton aria-label={`Bildirimler${notifications.unreadCount ? ` (${notifications.unreadCount} okunmamış)` : ''}`} onClick={(event) => setNotificationAnchor(event.currentTarget)}>
+                <Badge color="error" badgeContent={notifications.unreadCount} max={99}><NotificationsNoneRounded /></Badge>
+              </IconButton>
             </Tooltip>
+            <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} slotProps={{ paper: { sx: { width: 380, maxWidth: 'calc(100vw - 24px)', maxHeight: 520 } } }}>
+              <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography sx={{ fontWeight: 800 }}>Bildirimler</Typography>
+                {notifications.unreadCount > 0 && <Button size="small" onClick={async () => { await markAllNotificationsRead(); await refreshNotifications() }}>Tümünü okundu yap</Button>}
+              </Box>
+              {notifications.items.length === 0 && <MenuItem disabled>Henüz bildirim yok.</MenuItem>}
+              {notifications.items.map((item) => (
+                <MenuItem key={item.id} onClick={() => openNotification(item)} sx={{ alignItems: 'flex-start', whiteSpace: 'normal', bgcolor: item.readAtUtc ? undefined : 'action.hover' }}>
+                  <ListItemText primary={`${item.moduleCode} · ${item.title}`} secondary={<>{item.message}<br />{new Date(item.createdAtUtc).toLocaleString('tr-TR')}</>} slotProps={{ primary: { sx: { fontWeight: item.readAtUtc ? 600 : 800 } } }} />
+                </MenuItem>
+              ))}
+            </Menu>
             <Button className="user-profile-button" onClick={(event) => setProfileAnchor(event.currentTarget)}>
               <Avatar className="user-avatar">{initials(user.displayName)}</Avatar>
               <Box className="user-profile-copy">
@@ -97,21 +131,15 @@ export function AppLayout() {
               </Box>
             </Button>
             <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)}>
-              {user.availableProfiles.map((profile) => (
-                <MenuItem
-                  selected={profile.key === user.profile}
-                  key={profile.key}
-                  onClick={() => { selectProfile(profile.key); setProfileAnchor(null) }}
-                >
-                  <ListItemText primary={profile.displayName} secondary={profile.roles.map(roleLabel).join(' · ')} />
-                </MenuItem>
-              ))}
+              <MenuItem onClick={async () => { setProfileAnchor(null); await logout() }}><ListItemText primary="Oturumu kapat" /></MenuItem>
             </Menu>
           </Stack>
         </Box>
 
         <Box component="main" className="page-content">
-          <Outlet />
+          <Box className="page-content-card">
+            <Outlet />
+          </Box>
         </Box>
       </Box>
     </Box>

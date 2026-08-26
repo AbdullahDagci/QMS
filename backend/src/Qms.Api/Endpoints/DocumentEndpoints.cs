@@ -9,8 +9,18 @@ public static class DocumentEndpoints
     public static IEndpointRouteBuilder MapDocumentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var g = endpoints.MapGroup("/api/v1/documents").WithTags("Documents").RequireAuthorization(QmsPolicies.QualityView);
+        g.MapGet("/lookups", async (IDocumentService s, CancellationToken ct) => Results.Ok(await s.GetLookupsAsync(ct)));
+        g.MapGet("/lookup-definitions", async (IDocumentService s, CancellationToken ct) => Results.Ok(await s.ListLookupDefinitionsAsync(ct))).RequireAuthorization(QmsPolicies.AdministrationManage);
+        g.MapPost("/lookup-definitions", async (CreateDocumentLookupDefinitionRequest r, IDocumentService s, CancellationToken ct) => await Run(() => s.CreateLookupDefinitionAsync(r, ct), true)).RequireAuthorization(QmsPolicies.AdministrationManage);
+        g.MapPut("/lookup-definitions/{id:guid}", async (Guid id, UpdateDocumentLookupDefinitionRequest r, IDocumentService s, CancellationToken ct) => await Run(() => s.UpdateLookupDefinitionAsync(id, r, ct))).RequireAuthorization(QmsPolicies.AdministrationManage);
         g.MapPost("/search", async (ControlledDocumentSearchRequest r, IDocumentService s, CancellationToken ct) => await Run(() => s.SearchAsync(r, ct)));
         g.MapGet("/{id:guid}/details", async (Guid id, IDocumentService s, CancellationToken ct) => await s.GetDetailsAsync(id, ct) is { } value ? Results.Ok(value) : Results.NotFound());
+        g.MapGet("/{id:guid}/final-report", async (Guid id, IDocumentService s, IDocumentFinalReportService reports, HttpResponse response, CancellationToken ct) =>
+        {
+            var details = await s.GetDetailsAsync(id, ct); if (details is null) return Results.NotFound();
+            try { var file = await reports.EnsureGeneratedAsync(details, ct); response.Headers.Append("X-Content-SHA256", file.Sha256); return Results.File(file.Content, "application/pdf", file.FileName); }
+            catch (InvalidOperationException e) { return Results.Problem(statusCode: 409, title: "Nihai doküman çıktısı üretilemedi", detail: e.Message); }
+        }).WithName("DownloadDocumentFinalReport");
         g.MapPost("/", async (CreateControlledDocumentRequest r, IDocumentService s, CancellationToken ct) => await Run(() => s.CreateAsync(r, ct), true)).RequireAuthorization(QmsPolicies.DocumentCreate);
         g.MapPut("/{id:guid}/draft", async (Guid id, UpdateDocumentDraftRequest r, IDocumentService s, CancellationToken ct) => await Mutate(() => s.UpdateDraftAsync(id, r, ct))).RequireAuthorization(QmsPolicies.DocumentWrite);
         g.MapPost("/{id:guid}/reviews/{reviewId:guid}/complete", async (Guid id, Guid reviewId, CompleteDocumentReviewRequest r, IDocumentService s, CancellationToken ct) => await Mutate(() => s.CompleteReviewAsync(id, reviewId, r, ct))).RequireAuthorization(QmsPolicies.DocumentReview);

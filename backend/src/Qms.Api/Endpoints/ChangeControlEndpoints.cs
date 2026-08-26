@@ -10,8 +10,18 @@ public static class ChangeControlEndpoints
     public static IEndpointRouteBuilder MapChangeControlEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/change-controls").WithTags("Change Controls").RequireAuthorization(QmsPolicies.QualityView);
+        group.MapGet("/lookups", async (IChangeControlService service, CancellationToken ct) => Results.Ok(await service.GetLookupsAsync(ct)));
+        group.MapGet("/lookup-definitions", async (IChangeControlService service, CancellationToken ct) => Results.Ok(await service.ListLookupDefinitionsAsync(ct))).RequireAuthorization(QmsPolicies.AdministrationManage);
+        group.MapPost("/lookup-definitions", async (CreateChangeLookupDefinitionRequest request, IChangeControlService service, CancellationToken ct) => await Execute(() => service.CreateLookupDefinitionAsync(request, ct), true)).RequireAuthorization(QmsPolicies.AdministrationManage);
+        group.MapPut("/lookup-definitions/{id:guid}", async (Guid id, UpdateChangeLookupDefinitionRequest request, IChangeControlService service, CancellationToken ct) => { var result = await Execute(() => service.UpdateLookupDefinitionAsync(id, request, ct)); return result; }).RequireAuthorization(QmsPolicies.AdministrationManage);
         group.MapPost("/search", async (ChangeControlSearchRequest request, IChangeControlService service, CancellationToken ct) => await Execute(() => service.SearchAsync(request, ct)));
         group.MapGet("/{id:guid}/details", async (Guid id, IChangeControlService service, CancellationToken ct) => { var result = await service.GetDetailsAsync(id, ct); return result is null ? Results.NotFound() : Results.Ok(result); });
+        group.MapGet("/{id:guid}/final-report", async (Guid id, IChangeControlService service, IChangeControlFinalReportService reports, HttpResponse response, CancellationToken ct) =>
+        {
+            var details = await service.GetDetailsAsync(id, ct); if (details is null) return Results.NotFound();
+            try { var report = await reports.EnsureGeneratedAsync(details, ct); response.Headers.Append("X-Content-SHA256", report.Sha256); response.Headers.Append("Cache-Control", "private, immutable"); return Results.File(report.Content, "application/pdf", report.FileName); }
+            catch (InvalidOperationException ex) { return Results.Problem(statusCode: 409, title: "Nihai rapor üretilemedi", detail: ex.Message); }
+        }).WithName("DownloadChangeControlFinalReport");
         group.MapPost("/", async (CreateChangeControlRequest request, IChangeControlService service, CancellationToken ct) => await Execute(() => service.CreateAsync(request, ct), true)).RequireAuthorization(QmsPolicies.ChangeCreate);
         group.MapPost("/{id:guid}/assessments/{assessmentId:guid}/complete", async (Guid id, Guid assessmentId, CompleteChangeAssessmentRequest request, IChangeControlService service, CancellationToken ct) => await Mutate(() => service.CompleteAssessmentAsync(id, assessmentId, request, ct))).RequireAuthorization(QmsPolicies.ChangeReview);
         group.MapPost("/{id:guid}/actions", async (Guid id, AddChangeActionRequest request, IChangeControlService service, CancellationToken ct) => await Mutate(() => service.AddActionAsync(id, request, ct))).RequireAuthorization(QmsPolicies.ChangeReview);

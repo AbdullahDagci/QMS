@@ -6,8 +6,16 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { currentProfileKey, QMS_PROFILE_KEY } from "../api/http";
-import { getCurrentUser, type CurrentUser } from "../api/security";
+import {
+  currentProfileKey,
+  QMS_PROFILE_KEY,
+  QMS_SESSION_KEY,
+} from "../api/http";
+import {
+  getCurrentUser,
+  logout as logoutRequest,
+  type CurrentUser,
+} from "../api/security";
 
 export const Permissions = {
   qualityView: "quality.view",
@@ -52,6 +60,21 @@ export const Permissions = {
   supplierAuditExecute: "supplier-audit.execute",
   supplierAuditRespond: "supplier-audit.respond",
   supplierAuditApprove: "supplier-audit.approve",
+  workTrackingView: "work-tracking.view",
+  workTrackingCreate: "work-tracking.create",
+  workTrackingManage: "work-tracking.manage",
+  workTrackingVerify: "work-tracking.verify",
+  riskView: "risk.view",
+  riskCreate: "risk.create",
+  riskManage: "risk.manage",
+  riskApprove: "risk.approve",
+  mbrView: "mbr.view",
+  mbrCreate: "mbr.create",
+  mbrWrite: "mbr.write",
+  mbrReview: "mbr.review",
+  mbrApprove: "mbr.approve",
+  specializedView: "specialized.view",
+  specializedManage: "specialized.manage",
   administrationManage: "administration.manage",
 } as const;
 
@@ -69,6 +92,9 @@ interface AuthValue {
   loading: boolean;
   can: (permission: string) => boolean;
   selectProfile: (profile: string) => void;
+  authenticated: boolean;
+  refresh: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue>({
@@ -76,10 +102,16 @@ const AuthContext = createContext<AuthValue>({
   loading: false,
   can: () => true,
   selectProfile: () => undefined,
+  authenticated: true,
+  refresh: async () => undefined,
+  logout: async () => undefined,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState(currentProfileKey);
+  const [authenticated, setAuthenticated] = useState(() =>
+    Boolean(window.localStorage.getItem(QMS_SESSION_KEY)),
+  );
   const queryClient = useQueryClient();
   const currentUser = useQuery({
     queryKey: ["current-user", profile],
@@ -95,10 +127,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       selectProfile: (next) => {
         window.localStorage.setItem(QMS_PROFILE_KEY, next);
         setProfile(next);
-        queryClient.invalidateQueries();
+        // Record details contain user-specific workflow capabilities. Do not
+        // carry an assignee's cached transitions into another test profile.
+        void queryClient.resetQueries();
+      },
+      authenticated,
+      refresh: async () => {
+        setAuthenticated(Boolean(window.localStorage.getItem(QMS_SESSION_KEY)));
+        // A successful login changes the authorization context for every
+        // request, not only /me. Refetch all active data with the new token.
+        await queryClient.resetQueries();
+      },
+      logout: async () => {
+        await logoutRequest();
+        setAuthenticated(false);
+        // Prevent permission-sensitive responses (available transitions,
+        // assignments, notifications) from leaking into the next session.
+        queryClient.clear();
       },
     }),
-    [user, currentUser.isLoading, queryClient],
+    [user, currentUser.isLoading, queryClient, authenticated],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

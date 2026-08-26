@@ -24,12 +24,10 @@ public sealed class CapaTests
         var capa = MoveToImplementation(false);
         var action = Assert.Single(capa.Actions);
         capa.RequestActionCompletion(7, action.Id, "Kalibrasyon sertifikası eklendi.", Now.AddMinutes(7));
-        capa.Transition(8, "request-action-verification", null, false, Now.AddMinutes(8));
-        Assert.Throws<InvalidOperationException>(() => capa.Transition(9, "approve-actions", null, false, Now.AddMinutes(9)));
-        capa.VerifyAction(9, action.Id, true, "Kanıt KG tarafından doğrulandı.", Now.AddMinutes(9));
-        capa.Transition(10, "approve-actions", null, false, Now.AddMinutes(10));
+        Assert.Equal(CapaStatus.ActionVerification, capa.Status);
+        capa.VerifyAction(8, action.Id, true, "Kanıt KG tarafından doğrulandı.", Now.AddMinutes(8));
         Assert.Equal(CapaStatus.ClosureApproval, capa.Status);
-        capa.Transition(11, "close", "Tüm koşullar sağlandı.", false, Now.AddMinutes(11));
+        capa.Transition(9, "close", "Tüm koşullar sağlandı.", false, Now.AddMinutes(9));
         Assert.Equal(CapaStatus.Closed, capa.Status);
     }
 
@@ -39,11 +37,9 @@ public sealed class CapaTests
         var capa = MoveToImplementation(true);
         var action = Assert.Single(capa.Actions);
         capa.RequestActionCompletion(7, action.Id, "Kanıt", Now.AddMinutes(7));
-        capa.Transition(8, "request-action-verification", null, false, Now.AddMinutes(8));
-        capa.VerifyAction(9, action.Id, true, "Doğrulandı", Now.AddMinutes(9));
-        capa.Transition(10, "approve-actions", null, false, Now.AddMinutes(10));
-        capa.Transition(11, "start-effectiveness-review", null, false, Now.AddDays(2));
-        capa.Transition(12, "complete-effectiveness", "Hedeflenen düşüş sağlanmadı.", false, Now.AddDays(2).AddMinutes(1));
+        capa.VerifyAction(8, action.Id, true, "Doğrulandı", Now.AddMinutes(8));
+        capa.Transition(9, "start-effectiveness-review", null, false, Now.AddDays(2));
+        capa.Transition(10, "complete-effectiveness", "Hedeflenen düşüş sağlanmadı.", false, Now.AddDays(2).AddMinutes(1));
         Assert.Equal(CapaStatus.ActionPlanning, capa.Status);
         Assert.False(capa.IsEffective);
     }
@@ -54,7 +50,7 @@ public sealed class CapaTests
         capa.Transition(1, "submit", null, false, Now.AddMinutes(1));
         capa.Transition(2, "approve-scope", null, false, Now.AddMinutes(2));
         capa.Transition(3, "approve-root-cause", null, false, Now.AddMinutes(3));
-        capa.AddAction(4, "Düzeltici", "Ekipmanı yeniden kalibre et", "Bakım", Now.AddDays(10), Now.AddMinutes(4));
+        capa.AddAction(4, "Düzeltici", "Ekipmanı yeniden kalibre et", Guid.NewGuid(), "Bakım", Now.AddDays(10), Now.AddMinutes(4));
         capa.Transition(5, "submit-plan", null, false, Now.AddMinutes(5));
         capa.Transition(6, "approve-plan", null, false, Now.AddMinutes(6));
         return capa;

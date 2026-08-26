@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import {
@@ -6,10 +6,12 @@ import {
   Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
+  FormControlLabel,
   LinearProgress,
   Paper,
   Stack,
@@ -35,11 +37,13 @@ import {
   AssignmentIndRounded,
   ContentCopyRounded,
   DescriptionRounded,
+  DownloadRounded,
   HistoryRounded,
   LinkRounded,
   MenuBookRounded,
   PublishedWithChangesRounded,
   SchoolRounded,
+  SettingsRounded,
   TaskAltRounded,
   VisibilityRounded,
 } from "@mui/icons-material";
@@ -47,20 +51,27 @@ import {
   acknowledgeDocument,
   closeControlledCopy,
   completeDocumentReview,
+  createDocumentLookupDefinition,
+  downloadDocumentFinalReport,
   createDocument,
   getDocumentDetails,
+  getDocumentLookups,
   issueControlledCopy,
+  listDocumentLookupDefinitions,
   searchDocuments,
   startDocumentRevision,
   transitionDocument,
+  updateDocumentLookupDefinition,
   updateDocumentDraft,
   type CreateDocumentInput,
   type DocumentDetails,
   type DocumentListItem,
+  type DocumentLookupDefinition,
 } from "../../api/documents";
 import { searchChangeControls } from "../../api/changeControls";
 import { ModalHeader } from "../../components/ModalHeader";
 import {
+  SearchableMultiSelect,
   SearchableSelect,
   type SelectOption,
 } from "../../components/SearchableSelect";
@@ -93,31 +104,6 @@ const statuses: Array<SelectOption<string>> = [
   ["Withdrawn", "Yürürlükten kaldırıldı"],
   ["Archived", "Arşivlendi"],
 ].map(([value, label]) => ({ value, label }));
-const types = [
-  "SOP",
-  "Talimat",
-  "Spesifikasyon",
-  "Politika",
-  "Form / Şablon",
-  "Prosedür",
-].map((value) => ({ value, label: value }));
-const departments = [
-  "Üretim",
-  "Kalite Kontrol",
-  "Kalite Güvence",
-  "Ruhsatlandırma",
-  "Validasyon",
-  "Mühendislik",
-  "Tedarik Zinciri",
-  "Bilgi Teknolojileri",
-];
-const positions = [
-  "Üretim Operatörü",
-  "Hat Lideri",
-  "Kalite Kontrol Analisti",
-  "Kalite Güvence Uzmanı",
-  "Bakım Teknisyeni",
-];
 const flow = statuses.slice(0, 7);
 const label = (v: string) => statuses.find((x) => x.value === v)?.label ?? v;
 const dt = (v: string | null) =>
@@ -145,6 +131,7 @@ export function DocumentWorkspace() {
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [lookupSettingsOpen, setLookupSettingsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterValue, setFilterValue] =
     useState<DocumentFilterState>(emptyDocumentFilters);
@@ -173,6 +160,11 @@ export function DocumentWorkspace() {
     placeholderData: (p) => p,
     retry: false,
   });
+  const lookups = useQuery({
+    queryKey: ["document-lookups"],
+    queryFn: ({ signal }) => getDocumentLookups(signal),
+    retry: false,
+  });
   const sort = (f: string) => {
     if (f === sortBy) setDirection((x) => (x === "asc" ? "desc" : "asc"));
     else {
@@ -182,7 +174,7 @@ export function DocumentWorkspace() {
     setPage(0);
   };
   return (
-    <Box component="section">
+    <Box component="section" className="module-unified-page">
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -206,6 +198,15 @@ export function DocumentWorkspace() {
         </Box>
         <Stack direction="row" spacing={1.2}>
           <ModuleInfoButton module="M.04" onClick={() => setGuideOpen(true)} />
+          {can(Permissions.administrationManage) && (
+            <Button
+              variant="outlined"
+              startIcon={<SettingsRounded />}
+              onClick={() => setLookupSettingsOpen(true)}
+            >
+              Doküman tanımları
+            </Button>
+          )}
           {can(Permissions.documentCreate) && (
             <Button
               variant="contained"
@@ -218,7 +219,11 @@ export function DocumentWorkspace() {
           )}
         </Stack>
       </Stack>
-      <Stack direction="row" spacing={1.5} sx={{ mt: 3, alignItems: "center" }}>
+      <DocumentLookupSettingsDialog
+        open={lookupSettingsOpen}
+        onClose={() => setLookupSettingsOpen(false)}
+      />
+      <Stack className="module-list-toolbar" direction="row" spacing={1.5} sx={{ mt: 3, alignItems: "center" }}>
         <AdvancedFilterButton
           open={filtersOpen}
           activeCount={filters.length}
@@ -234,7 +239,13 @@ export function DocumentWorkspace() {
         <DocumentFilters
           value={filterValue}
           statuses={statuses}
-          types={types}
+          types={(lookups.data?.documentTypes ?? []).map((x) => ({
+            value: x.code,
+            label: x.name,
+          }))}
+          confidentialityLevels={(
+            lookups.data?.confidentialityLevels ?? []
+          ).map((x) => ({ value: x.code, label: x.name }))}
           onApply={(v) => {
             setFilterValue(v);
             setPage(0);
@@ -430,6 +441,224 @@ function Row({ item, open }: { item: DocumentListItem; open: () => void }) {
   );
 }
 
+const documentLookupCategories: Array<SelectOption<string>> = [
+  { value: "DocumentType", label: "Doküman türü" },
+  { value: "Confidentiality", label: "Gizlilik seviyesi" },
+];
+
+function DocumentLookupSettingsDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const [category, setCategory] = useState("DocumentType");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [sortOrder, setSortOrder] = useState(100);
+  const definitions = useQuery({
+    queryKey: ["document-lookup-definitions"],
+    queryFn: ({ signal }) => listDocumentLookupDefinitions(signal),
+    enabled: open,
+    retry: false,
+  });
+  const refresh = async () => {
+    await client.invalidateQueries({
+      queryKey: ["document-lookup-definitions"],
+    });
+    await client.invalidateQueries({ queryKey: ["document-lookups"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      createDocumentLookupDefinition({ category, code, name, sortOrder }),
+    onSuccess: async () => {
+      setCode("");
+      setName("");
+      setSortOrder(100);
+      await refresh();
+    },
+  });
+  const update = useMutation({
+    mutationFn: ({
+      id,
+      nextName,
+      nextSortOrder,
+      isActive,
+    }: {
+      id: string;
+      nextName: string;
+      nextSortOrder: number;
+      isActive: boolean;
+    }) =>
+      updateDocumentLookupDefinition(id, {
+        name: nextName,
+        sortOrder: nextSortOrder,
+        isActive,
+      }),
+    onSuccess: refresh,
+  });
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <ModalHeader onClose={onClose}>
+        <Box>
+          <Typography variant="overline">M.04 · YÖNETİLEN LOOKUP</Typography>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            Doküman tanımları
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Kodlar geçmiş kayıtların snapshot bütünlüğünü korur; ad ve aktiflik
+            yalnızca yeni seçimleri yönetir.
+          </Typography>
+        </Box>
+      </ModalHeader>
+      <DialogContent dividers>
+        {(definitions.isError || create.isError || update.isError) && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {definitions.error?.message ??
+              create.error?.message ??
+              update.error?.message}
+          </Alert>
+        )}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+            <Box sx={{ minWidth: 180 }}>
+              <SearchableSelect
+                label="Kategori"
+                value={category}
+                options={documentLookupCategories}
+                onChange={(v) => setCategory(v ?? "DocumentType")}
+                size="medium"
+              />
+            </Box>
+            <TextField
+              required
+              label="Değişmez kod"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <TextField
+              required
+              fullWidth
+              label="Görünen ad"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <TextField
+              required
+              type="number"
+              label="Sıra"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              sx={{ width: 110 }}
+            />
+            <Button
+              variant="contained"
+              disabled={!code.trim() || !name.trim() || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              Ekle
+            </Button>
+          </Stack>
+        </Paper>
+        <Stack spacing={1}>
+          {definitions.data?.map((item) => (
+            <DocumentLookupDefinitionRow
+              key={item.id}
+              item={item}
+              saving={update.isPending}
+              onSave={(nextName, nextSortOrder, isActive) =>
+                update.mutate({
+                  id: item.id,
+                  nextName,
+                  nextSortOrder,
+                  isActive,
+                })
+              }
+            />
+          ))}
+          {definitions.isLoading && <LinearProgress />}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
+          Kapat
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function DocumentLookupDefinitionRow({
+  item,
+  saving,
+  onSave,
+}: {
+  item: DocumentLookupDefinition;
+  saving: boolean;
+  onSave: (name: string, sortOrder: number, isActive: boolean) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [sortOrder, setSortOrder] = useState(item.sortOrder);
+  const [isActive, setIsActive] = useState(item.isActive);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        sx={{ alignItems: { md: "center" } }}
+      >
+        <Chip
+          size="small"
+          label={
+            documentLookupCategories.find((x) => x.value === item.category)
+              ?.label ?? item.category
+          }
+          sx={{ minWidth: 145 }}
+        />
+        <Typography
+          variant="body2"
+          sx={{ minWidth: 150, fontFamily: "monospace" }}
+        >
+          {item.code}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          label="Görünen ad"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Sıra"
+          value={sortOrder}
+          onChange={(e) => setSortOrder(Number(e.target.value))}
+          sx={{ width: 95 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+          }
+          label="Aktif"
+        />
+        <Button
+          variant="outlined"
+          disabled={!name.trim() || saving}
+          onClick={() => onSave(name, sortOrder, isActive)}
+        >
+          Kaydet
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
+
 function CreateDialog({
   open,
   onClose,
@@ -457,6 +686,28 @@ function CreateDialog({
     enabled: open,
     retry: false,
   });
+  const lookups = useQuery({
+    queryKey: ["document-lookups"],
+    queryFn: ({ signal }) => getDocumentLookups(signal),
+    enabled: open,
+    retry: false,
+  });
+  useEffect(() => {
+    if (!lookups.data) return;
+    setV((current) => ({
+      ...current,
+      documentType: lookups.data.documentTypes.some(
+        (x) => x.code === current.documentType,
+      )
+        ? current.documentType
+        : (lookups.data.documentTypes[0]?.code ?? ""),
+      confidentiality: lookups.data.confidentialityLevels.some(
+        (x) => x.code === current.confidentiality,
+      )
+        ? current.confidentiality
+        : (lookups.data.confidentialityLevels[0]?.code ?? ""),
+    }));
+  }, [lookups.data]);
   const set = <K extends keyof CreateDocumentInput>(
     k: K,
     value: CreateDocumentInput[K],
@@ -482,11 +733,13 @@ function CreateDialog({
   const valid =
     v.documentCode.trim() &&
     v.title.trim() &&
-    v.owner.trim() &&
-    v.department &&
+    v.documentType &&
+    v.ownerUserId &&
+    v.departmentId &&
+    v.confidentiality &&
     v.content.trim() &&
     v.changeSummary.trim() &&
-    v.reviewDepartments.length > 0;
+    v.reviewDepartmentIds.length > 0;
   return (
     <Dialog open={open} onClose={close} maxWidth="lg" fullWidth>
       <ModalHeader onClose={close}>
@@ -523,35 +776,52 @@ function CreateDialog({
                 size="medium"
                 label="Doküman türü"
                 value={v.documentType}
-                options={types}
-                onChange={(x) => set("documentType", x ?? "SOP")}
+                options={(lookups.data?.documentTypes ?? []).map((x) => ({
+                  value: x.code,
+                  label: x.name,
+                }))}
+                onChange={(x) => set("documentType", x ?? "")}
               />
             </Box>
           </Stack>
           <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              fullWidth
-              label="Doküman sahibi"
-              value={v.owner}
-              onChange={(e) => set("owner", e.target.value)}
-            />
-            <Autocomplete
-              fullWidth
-              options={departments}
-              value={v.department}
-              onChange={(_, x) => set("department", x ?? "")}
-              renderInput={(p) => <TextField {...p} label="Sorumlu bölüm" />}
-            />
+            <Box sx={{ flex: 1 }}>
+              <SearchableSelect
+                required
+                size="medium"
+                label="Doküman sahibi"
+                value={v.ownerUserId || null}
+                options={(lookups.data?.owners ?? []).map((x) => ({
+                  value: x.id,
+                  label: x.departmentName
+                    ? `${x.displayName} · ${x.departmentName}`
+                    : x.displayName,
+                }))}
+                onChange={(x) => set("ownerUserId", x ?? "")}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <SearchableSelect
+                required
+                size="medium"
+                label="Sorumlu bölüm"
+                value={v.departmentId || null}
+                options={(lookups.data?.departments ?? []).map((x) => ({
+                  value: x.id,
+                  label: x.name,
+                }))}
+                onChange={(x) => set("departmentId", x ?? "")}
+              />
+            </Box>
             <Box sx={{ minWidth: 210 }}>
               <SearchableSelect
                 size="medium"
                 label="Gizlilik"
                 value={v.confidentiality}
-                options={["Kurum İçi", "Gizli", "Halka Açık"].map((value) => ({
-                  value,
-                  label: value,
-                }))}
-                onChange={(x) => set("confidentiality", x ?? "Kurum İçi")}
+                options={(lookups.data?.confidentialityLevels ?? []).map(
+                  (x) => ({ value: x.code, label: x.name }),
+                )}
+                onChange={(x) => set("confidentiality", x ?? "")}
               />
             </Box>
           </Stack>
@@ -605,30 +875,24 @@ function CreateDialog({
             value={v.changeSummary}
             onChange={(e) => set("changeSummary", e.target.value)}
           />
-          <Autocomplete
-            multiple
-            options={departments}
-            value={v.reviewDepartments}
-            onChange={(_, x) => set("reviewDepartments", x)}
-            renderInput={(p) => (
-              <TextField
-                {...p}
-                label="İnceleme bölümleri"
-                helperText="Kalite Güvence incelemesi sunucu tarafından otomatik eklenir."
-              />
-            )}
+          <SearchableMultiSelect
+            required
+            label="İnceleme bölümleri (KG otomatik eklenir)"
+            values={v.reviewDepartmentIds}
+            options={(lookups.data?.departments ?? []).map((x) => ({
+              value: x.id,
+              label: `${x.name} · ${x.reviewerName}`,
+            }))}
+            onChange={(x) => set("reviewDepartmentIds", x)}
           />
-          <Autocomplete
-            multiple
-            options={positions}
-            value={v.trainingPositions}
-            onChange={(_, x) => set("trainingPositions", x)}
-            renderInput={(p) => (
-              <TextField
-                {...p}
-                label="Yürürlük öncesi zorunlu eğitim pozisyonları"
-              />
-            )}
+          <SearchableMultiSelect
+            label="Yürürlük öncesi zorunlu eğitim pozisyonları"
+            values={v.trainingPositionIds}
+            options={(lookups.data?.positions ?? []).map((x) => ({
+              value: x.id,
+              label: x.name,
+            }))}
+            onChange={(x) => set("trainingPositionIds", x)}
           />
         </Stack>
       </DialogContent>
@@ -653,10 +917,13 @@ function DetailsDialog({
   id: string | null;
   onClose: () => void;
 }) {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const client = useQueryClient();
   const [tab, setTab] = useState(0);
   const [note, setNote] = useState("");
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureMeaningAccepted, setSignatureMeaningAccepted] =
+    useState(false);
   const q = useQuery({
     queryKey: ["document-details", id],
     queryFn: ({ signal }) => getDocumentDetails(id!, signal),
@@ -676,13 +943,28 @@ function DetailsDialog({
         code,
         note || undefined,
         false,
+        signaturePassword || undefined,
+        signatureMeaningAccepted,
       ),
     onSuccess: update,
+  });
+  const report = useMutation({
+    mutationFn: () => downloadDocumentFinalReport(id!),
+    onSuccess: (data) => {
+      const url = URL.createObjectURL(data.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = data.fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
   });
   const record = q.data?.record;
   const close = () => {
     setTab(0);
     setNote("");
+    setSignaturePassword("");
+    setSignatureMeaningAccepted(false);
     onClose();
   };
   return (
@@ -734,6 +1016,17 @@ function DetailsDialog({
                   label={record.sourceRecordNumber}
                 />
               )}
+              {record.status === "Archived" && (
+                <Button
+                  color="inherit"
+                  variant="outlined"
+                  startIcon={<DownloadRounded />}
+                  disabled={report.isPending}
+                  onClick={() => report.mutate()}
+                >
+                  Nihai PDF
+                </Button>
+              )}
             </Stack>
           )}
         </Stack>
@@ -746,12 +1039,18 @@ function DetailsDialog({
             {transition.error.message}
           </Alert>
         )}
+        {report.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {report.error.message}
+          </Alert>
+        )}
         {record && q.data && (
-          <>
+          <Box className="record-detail-workspace">
             <Paper elevation={0} square className="record-detail-tabs-shell">
               <Tabs
                 value={tab}
                 onChange={(_, x: number) => setTab(x)}
+                orientation="vertical"
                 variant="scrollable"
               >
                 <Tab
@@ -793,7 +1092,10 @@ function DetailsDialog({
             </Paper>
             <Box className="detail-tab-panel">
               {tab === 0 && (
-                <Stack spacing={3}>
+                <Stack
+                  className="record-tab-canvas overview-canvas"
+                  spacing={3}
+                >
                   <Paper variant="outlined" className="workflow-visual-card">
                     <Typography sx={{ fontWeight: 800, mb: 2 }}>
                       Kontrollü doküman yaşam döngüsü
@@ -848,7 +1150,10 @@ function DetailsDialog({
               {tab === 1 && (
                 <Versions
                   details={q.data}
-                  canWrite={can(Permissions.documentWrite)}
+                  canWrite={
+                    can(Permissions.documentWrite) &&
+                    q.data.actionableTaskRoles.includes("DocumentAuthor")
+                  }
                   onUpdate={update}
                 />
               )}{" "}
@@ -862,7 +1167,9 @@ function DetailsDialog({
               {tab === 3 && (
                 <Training
                   details={q.data}
-                  canManage={hasAnyRole(user.roles, "Administrator", "QualityAssurance", "TrainingCoordinator")}
+                  canManage={q.data.actionableTaskRoles.includes(
+                    "DocumentCoordinator",
+                  )}
                   canRead={can(Permissions.documentRead)}
                   onUpdate={update}
                 />
@@ -870,12 +1177,18 @@ function DetailsDialog({
               {tab === 4 && (
                 <Copies
                   details={q.data}
-                  canDistribute={can(Permissions.documentDistribute)}
+                  canDistribute={
+                    can(Permissions.documentDistribute) &&
+                    q.data.actionableTaskRoles.includes("DocumentCoordinator")
+                  }
                   onUpdate={update}
                 />
               )}{" "}
               {tab === 5 && (
-                <Paper variant="outlined" className="transition-panel">
+                <Paper
+                  variant="outlined"
+                  className="record-tab-canvas transition-panel"
+                >
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>
                     Kontrollü karar ve yürürlük kapıları
                   </Typography>
@@ -884,47 +1197,84 @@ function DetailsDialog({
                     butonu sunucuda reddedilir. Onay ve yürürlük kayıtları
                     değiştirilemez zaman damgası taşır.
                   </Alert>
-                  {q.data.availableTransitions.some((x) => x.noteRequired && canUseTransition(x.code, user.roles)) && (
-                      <TextField
-                        fullWidth
-                        multiline
-                        minRows={2}
-                        label="Karar gerekçesi / imza anlamı"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        sx={{ mb: 2 }}
-                      />
-                    )}
+                  {q.data.availableTransitions.some((x) => x.noteRequired) && (
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      label="Karar gerekçesi / imza anlamı"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      sx={{ mb: 2 }}
+                    />
+                  )}
                   <Stack
                     direction="row"
                     spacing={1}
                     useFlexGap
                     sx={{ flexWrap: "wrap" }}
                   >
-                    {q.data.availableTransitions.filter((x) => canUseTransition(x.code, user.roles)).map((x) => (
-                        <Button
-                          key={x.code}
-                          variant="contained"
-                          color={x.code === "withdraw" ? "error" : "primary"}
-                          disabled={
-                            transition.isPending ||
-                            (x.noteRequired && !note.trim())
+                    {q.data.availableTransitions.some((x) =>
+                      documentSignatureTransition(x.code),
+                    ) && (
+                      <Box sx={{ width: "100%" }}>
+                        <TextField
+                          fullWidth
+                          type="password"
+                          autoComplete="current-password"
+                          label="E-imza parolası"
+                          value={signaturePassword}
+                          onChange={(e) => setSignaturePassword(e.target.value)}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={signatureMeaningAccepted}
+                              onChange={(e) =>
+                                setSignatureMeaningAccepted(e.target.checked)
+                              }
+                            />
                           }
-                          onClick={() => transition.mutate(x.code)}
-                        >
-                          {x.label}
-                        </Button>
-                      ))}
+                          label="Bu kararın elektronik imza anlamını kabul ediyorum."
+                        />
+                      </Box>
+                    )}
+                    {q.data.availableTransitions.map((x) => (
+                      <Button
+                        key={x.code}
+                        variant="contained"
+                        color={x.code === "withdraw" ? "error" : "primary"}
+                        disabled={
+                          transition.isPending ||
+                          (x.noteRequired && !note.trim()) ||
+                          (documentSignatureTransition(x.code) &&
+                            (!signaturePassword || !signatureMeaningAccepted))
+                        }
+                        onClick={() => transition.mutate(x.code)}
+                      >
+                        {x.label}
+                      </Button>
+                    ))}
                     {q.data.availableTransitions.length === 0 &&
                       record.status === "RevisionPending" &&
-                      can(Permissions.documentWrite) && (
+                      can(Permissions.documentWrite) &&
+                      q.data.actionableTaskRoles.includes("DocumentAuthor") && (
                         <RevisionButton details={q.data} onUpdate={update} />
                       )}
                   </Stack>
                 </Paper>
               )}
               {tab === 6 && (
-                <Box className="history-tab-panel">
+                <Box className="record-tab-canvas history-tab-panel">
+                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
+                    Elektronik imzalar ({q.data.signatures.length})
+                  </Typography>
+                  {q.data.signatures.map((signature) => (
+                    <Alert key={signature.id} severity="success" sx={{ mb: 1 }}>
+                      {signature.signerName} · {signature.meaning} ·{" "}
+                      {dt(signature.signedAtUtc)} · v{signature.recordVersion}
+                    </Alert>
+                  ))}
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>
                     Kronolojik doküman geçmişi
                   </Typography>
@@ -940,7 +1290,7 @@ function DetailsDialog({
                 </Box>
               )}
             </Box>
-          </>
+          </Box>
         )}
       </DialogContent>
     </Dialog>
@@ -970,7 +1320,7 @@ function Versions({
     onSuccess: onUpdate,
   });
   return (
-    <Stack spacing={2}>
+    <Stack className="record-tab-canvas" spacing={2}>
       {mutation.isError && (
         <Alert severity="error">{mutation.error.message}</Alert>
       )}
@@ -1060,7 +1410,7 @@ function Reviews({
     onSuccess: onUpdate,
   });
   return (
-    <Stack spacing={2}>
+    <Stack className="record-tab-canvas" spacing={2}>
       {mutation.isError && (
         <Alert severity="error">{mutation.error.message}</Alert>
       )}
@@ -1112,6 +1462,7 @@ function Reviews({
               </Alert>
             )}
             {canReview &&
+              details.actionableTaskRoles.includes(`DocumentReview:${x.id}`) &&
               details.record.status === "Review" &&
               x.status === "Pending" && (
                 <Stack spacing={1} sx={{ mt: 1.5 }}>
@@ -1166,18 +1517,23 @@ function Training({
   const [meaning, setMeaning] = useState(
     "Bu dokümanın güncel sürümünü okudum ve anladım.",
   );
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureMeaningAccepted, setSignatureMeaningAccepted] =
+    useState(false);
   const read = useMutation({
     mutationFn: () =>
-      acknowledgeDocument(details.record.id, details.record.version, meaning),
+      acknowledgeDocument(
+        details.record.id,
+        details.record.version,
+        meaning,
+        signaturePassword,
+        signatureMeaningAccepted,
+      ),
     onSuccess: onUpdate,
   });
   return (
-    <Stack spacing={2}>
-      {read.isError && (
-        <Alert severity="error">
-          {read.error?.message}
-        </Alert>
-      )}
+    <Stack className="record-tab-canvas" spacing={2}>
+      {read.isError && <Alert severity="error">{read.error?.message}</Alert>}
       {details.trainingRequirements
         .filter((x) => x.revisionId === details.record.currentRevisionId)
         .map((x) => (
@@ -1201,8 +1557,17 @@ function Training({
             {canManage &&
               details.record.status === "TrainingWaiting" &&
               x.status === "Pending" && (
-                <Alert severity="info" sx={{ mt: 1.5 }} action={<Button href="/modules/m05" color="inherit">M.05 kaydını aç</Button>}>
-                  Bu gereksinim M.05 eğitim görevi, okuma imzası, değerlendirme ve eğitmen onayı tamamlanınca otomatik kapanır.
+                <Alert
+                  severity="info"
+                  sx={{ mt: 1.5 }}
+                  action={
+                    <Button href="/modules/m05" color="inherit">
+                      M.05 kaydını aç
+                    </Button>
+                  }
+                >
+                  Bu gereksinim M.05 eğitim görevi, okuma imzası, değerlendirme
+                  ve eğitmen onayı tamamlanınca otomatik kapanır.
                 </Alert>
               )}
           </Paper>
@@ -1225,11 +1590,34 @@ function Training({
             value={meaning}
             onChange={(e) => setMeaning(e.target.value)}
           />
+          <TextField
+            sx={{ mt: 1.5 }}
+            fullWidth
+            type="password"
+            autoComplete="current-password"
+            label="E-imza parolası"
+            value={signaturePassword}
+            onChange={(e) => setSignaturePassword(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={signatureMeaningAccepted}
+                onChange={(e) => setSignatureMeaningAccepted(e.target.checked)}
+              />
+            }
+            label="Okuma beyanının elektronik imza anlamını kabul ediyorum."
+          />
           <Button
             sx={{ mt: 1.5 }}
             startIcon={<VisibilityRounded />}
             variant="contained"
-            disabled={!meaning.trim() || read.isPending}
+            disabled={
+              !meaning.trim() ||
+              !signaturePassword ||
+              !signatureMeaningAccepted ||
+              read.isPending
+            }
             onClick={() => read.mutate()}
           >
             Okudum ve anladım
@@ -1290,7 +1678,7 @@ function Copies({
     onSuccess: onUpdate,
   });
   return (
-    <Stack spacing={2}>
+    <Stack className="record-tab-canvas" spacing={2}>
       {(issue.isError || close.isError) && (
         <Alert severity="error">
           {issue.error?.message ?? close.error?.message}
@@ -1392,14 +1780,36 @@ function RevisionButton({
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
   const [major, setMajor] = useState(false);
+  const [reviewDepartmentIds, setReviewDepartmentIds] = useState(() =>
+    details.reviews
+      .filter(
+        (x) =>
+          x.revisionId === details.record.currentRevisionId && x.departmentId,
+      )
+      .map((x) => x.departmentId!),
+  );
+  const [trainingPositionIds, setTrainingPositionIds] = useState(() =>
+    details.trainingRequirements
+      .filter(
+        (x) =>
+          x.revisionId === details.record.currentRevisionId && x.positionId,
+      )
+      .map((x) => x.positionId!),
+  );
+  const lookups = useQuery({
+    queryKey: ["document-lookups"],
+    queryFn: ({ signal }) => getDocumentLookups(signal),
+    enabled: open,
+    retry: false,
+  });
   const mutation = useMutation({
     mutationFn: () =>
       startDocumentRevision(details.record.id, {
         expectedVersion: details.record.version,
         major,
         changeSummary: summary,
-        reviewDepartments: [details.record.department],
-        trainingPositions: [],
+        reviewDepartmentIds,
+        trainingPositionIds,
       }),
     onSuccess: (d) => {
       setOpen(false);
@@ -1448,6 +1858,25 @@ function RevisionButton({
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
             />
+            <SearchableMultiSelect
+              required
+              label="İnceleme bölümleri"
+              values={reviewDepartmentIds}
+              options={(lookups.data?.departments ?? []).map((x) => ({
+                value: x.id,
+                label: `${x.name} · ${x.reviewerName}`,
+              }))}
+              onChange={setReviewDepartmentIds}
+            />
+            <SearchableMultiSelect
+              label="Zorunlu eğitim pozisyonları"
+              values={trainingPositionIds}
+              options={(lookups.data?.positions ?? []).map((x) => ({
+                value: x.id,
+                label: x.name,
+              }))}
+              onChange={setTrainingPositionIds}
+            />
             {mutation.isError && (
               <Alert severity="error">{mutation.error.message}</Alert>
             )}
@@ -1457,7 +1886,7 @@ function RevisionButton({
           <Button onClick={() => setOpen(false)}>Vazgeç</Button>
           <Button
             variant="contained"
-            disabled={!summary.trim()}
+            disabled={!summary.trim() || reviewDepartmentIds.length === 0}
             onClick={() => mutation.mutate()}
           >
             Revizyonu aç
@@ -1487,26 +1916,25 @@ function initial(): CreateDocumentInput {
     sourceChangeControlId: null,
     documentCode: "",
     title: "",
-    documentType: "SOP",
-    owner: "",
-    department: "",
-    confidentiality: "Kurum İçi",
+    documentType: "",
+    ownerUserId: "",
+    departmentId: "",
+    confidentiality: "",
     reviewPeriodMonths: 12,
     plannedEffectiveDateUtc: d.toISOString().slice(0, 16),
     content: "",
     changeSummary: "İlk yayın",
-    reviewDepartments: [],
-    trainingPositions: [],
+    reviewDepartmentIds: [],
+    trainingPositionIds: [],
   };
 }
 
-function hasAnyRole(roles: string[], ...expected: string[]) {
-  return expected.some((role) => roles.includes(role));
-}
-
-function canUseTransition(code: string, roles: string[]) {
-  if (hasAnyRole(roles, "Administrator")) return true;
-  if (code === "approve") return hasAnyRole(roles, "Approver");
-  if (code === "release") return hasAnyRole(roles, "DocumentController", "QualityAssurance");
-  return hasAnyRole(roles, "DocumentController", "QualityAssurance");
+function documentSignatureTransition(code: string) {
+  return [
+    "approve",
+    "release",
+    "complete-periodic-review",
+    "withdraw",
+    "archive",
+  ].includes(code);
 }

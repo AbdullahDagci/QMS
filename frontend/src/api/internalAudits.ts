@@ -24,6 +24,7 @@ export interface InternalAuditRecord extends InternalAuditListItem {
   objectives: string;
   criteria: string;
   leadAuditorUserId: string;
+  auditeeDepartmentId: string;
   leadAuditorDepartment: string;
   unplannedReason: string | null;
   checklistVersion: string;
@@ -57,6 +58,7 @@ export interface AuditFinding {
   linkedCapaId: string | null;
   linkedCapaNumber: string | null;
   owner: string;
+  ownerUserId: string;
   targetDateUtc: string;
   response: string | null;
   correctiveAction: string | null;
@@ -78,6 +80,8 @@ export interface InternalAuditDetails {
     reason: string | null;
     payload?: Record<string, unknown>;
   }>;
+  signatures: Array<{id:string;recordVersion:number;signerUserId:string;signer:string;meaning:string;signedAtUtc:string;contentHash:string;comment:string|null}>;
+  actionableTaskRoles: string[];
   availableTransitions: Array<{
     code: string;
     label: string;
@@ -92,6 +96,7 @@ export interface CreateInternalAuditInput {
   objectives: string;
   criteria: string;
   auditeeDepartment: string;
+  auditeeDepartmentId: string;
   leadAuditorUserId: string;
   leadAuditor: string;
   leadAuditorDepartment: string;
@@ -102,6 +107,8 @@ export interface CreateInternalAuditInput {
   checklistVersion: string;
   questions: Array<{ question: string; reference: string }>;
 }
+export interface InternalAuditOptions { departments: Array<{id:string;name:string;department:string|null}>; leadAuditors:Array<{id:string;name:string;department:string|null}>; findingOwners:Array<{id:string;name:string;department:string|null}>; auditTypes:Array<{code:string;name:string}>; }
+export interface InternalAuditLookupDefinition{id:string;category:string;code:string;name:string;sortOrder:number;isActive:boolean}
 
 const headers = { "Content-Type": "application/json" };
 async function request<T>(url: string, init?: RequestInit) {
@@ -135,6 +142,11 @@ export const getInternalAuditDetails = (id: string, signal?: AbortSignal) =>
   request<InternalAuditDetails>(`/api/v1/internal-audits/${id}/details`, {
     signal,
   });
+export const getInternalAuditOptions = (signal?: AbortSignal) => request<InternalAuditOptions>("/api/v1/internal-audits/options", { signal });
+export const getInternalAuditLookupDefinitions=()=>request<InternalAuditLookupDefinition[]>("/api/v1/internal-audits/lookup-definitions");
+export const createInternalAuditLookupDefinition=(input:{category:string;code:string;name:string;sortOrder:number})=>request<InternalAuditLookupDefinition>("/api/v1/internal-audits/lookup-definitions",{method:"POST",headers,body:JSON.stringify(input)});
+export const updateInternalAuditLookupDefinition=(id:string,input:{name:string;sortOrder:number;isActive:boolean})=>request<InternalAuditLookupDefinition>(`/api/v1/internal-audits/lookup-definitions/${id}`,{method:"PUT",headers,body:JSON.stringify(input)});
+export async function downloadInternalAuditFinalReport(id:string){const response=await qmsFetch(`/api/v1/internal-audits/${id}/final-report`);if(!response.ok)throw new Error("Nihai iç denetim PDF'i indirilemedi.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`ic-denetim-${id}.pdf`;a.click();URL.revokeObjectURL(url);}
 export const createInternalAudit = (input: CreateInternalAuditInput) =>
   request<InternalAuditDetails>("/api/v1/internal-audits", {
     method: "POST",
@@ -146,11 +158,13 @@ export const transitionInternalAudit = (
   expectedVersion: number,
   transition: string,
   note?: string,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
 ) =>
   request<InternalAuditDetails>(`/api/v1/internal-audits/${id}/transitions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ expectedVersion, transition, note }),
+    body: JSON.stringify({ expectedVersion, transition, note, signaturePassword, signatureMeaningAccepted }),
   });
 export const answerAuditQuestion = (
   id: string,
@@ -178,6 +192,7 @@ export const addAuditFinding = (
     impact: number;
     likelihood: number;
     capaRequired: boolean;
+    ownerUserId: string;
     owner: string;
     targetDateUtc: string;
   },
@@ -207,12 +222,14 @@ export const closeAuditFinding = (
   findingId: string,
   expectedVersion: number,
   verificationNote: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<InternalAuditDetails>(
     `/api/v1/internal-audits/${id}/findings/${findingId}/close`,
     {
       method: "POST",
       headers,
-      body: JSON.stringify({ expectedVersion, verificationNote }),
+      body: JSON.stringify({ expectedVersion, verificationNote, signaturePassword, signatureMeaningAccepted }),
     },
   );

@@ -12,6 +12,8 @@ import {
   ReportProblemRounded,
   ShieldRounded,
   VerifiedRounded,
+  DownloadRounded,
+  SettingsRounded,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -47,6 +49,11 @@ import {
   closeSupplierAuditFinding,
   createSupplierAudit,
   createSupplierAuditInvitation,
+  getSupplierAuditOptions,
+  downloadSupplierAuditFinalReport,
+  getSupplierAuditLookupDefinitions,
+  createSupplierAuditLookupDefinition,
+  updateSupplierAuditLookupDefinition,
   getSupplierAuditDetails,
   recordSupplierAuditResult,
   respondSupplierAuditFinding,
@@ -159,6 +166,7 @@ export function SupplierAuditWorkspace() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [createOpen, setCreateOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const { can } = useAuth();
   const columnFilters = useMemo(
     () => toSupplierAuditColumnFilters(filters),
@@ -190,7 +198,7 @@ export function SupplierAuditWorkspace() {
     setPage(0);
   };
   return (
-    <Box component="section">
+    <Box component="section" className="module-unified-page">
       <Stack
         direction={{ xs: "column", xl: "row" }}
         sx={{
@@ -223,6 +231,15 @@ export function SupplierAuditWorkspace() {
           sx={{ alignSelf: { xs: "flex-start", xl: "auto" }, flexWrap: "wrap" }}
         >
           <ModuleInfoButton module="M.09" onClick={() => setGuideOpen(true)} />
+          {can(Permissions.administrationManage) && (
+            <Button
+              variant="outlined"
+              startIcon={<SettingsRounded />}
+              onClick={() => setLookupOpen(true)}
+            >
+              M.09 tanımları
+            </Button>
+          )}
           {can(Permissions.supplierAuditPlan) && (
             <Button
               variant="contained"
@@ -271,6 +288,7 @@ export function SupplierAuditWorkspace() {
         />
       </Box>
       <Stack
+        className="module-list-toolbar"
         direction="row"
         spacing={1.5}
         sx={{ mt: 2.5, alignItems: "center" }}
@@ -391,6 +409,10 @@ export function SupplierAuditWorkspace() {
         open={guideOpen}
         module="M.09"
         onClose={() => setGuideOpen(false)}
+      />
+      <SupplierAuditLookupDialog
+        open={lookupOpen}
+        onClose={() => setLookupOpen(false)}
       />
     </Box>
   );
@@ -516,6 +538,201 @@ function AuditRow({
   );
 }
 
+function SupplierAuditLookupDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [category, setCategory] = useState("Country");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [sortOrder, setSortOrder] = useState(100);
+  const query = useQuery({
+    queryKey: ["supplier-audit-lookups"],
+    queryFn: getSupplierAuditLookupDefinitions,
+    enabled: open,
+    retry: false,
+  });
+  const refresh = async () => {
+    await qc.invalidateQueries({ queryKey: ["supplier-audit-lookups"] });
+    await qc.invalidateQueries({ queryKey: ["m09-options"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      createSupplierAuditLookupDefinition({ category, code, name, sortOrder }),
+    onSuccess: async () => {
+      setCode("");
+      setName("");
+      await refresh();
+    },
+  });
+  const update = useMutation({
+    mutationFn: (item: {
+      id: string;
+      name: string;
+      sortOrder: number;
+      isActive: boolean;
+    }) => updateSupplierAuditLookupDefinition(item.id, item),
+    onSuccess: refresh,
+  });
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+      <ModalHeader onClose={onClose}>
+        <Box>
+          <Typography variant="overline">M.09 · YÖNETİLEN LOOKUP</Typography>
+          <Typography variant="h5">Tedarikçi denetimi tanımları</Typography>
+          <Typography color="text.secondary">
+            Kod geçmiş kayıtlarda snapshot olarak korunur; ad ve aktiflik yalnız
+            yeni kayıt seçimlerini etkiler.
+          </Typography>
+        </Box>
+      </ModalHeader>
+      <DialogContent dividers>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.2}
+          sx={{ mb: 2 }}
+        >
+          <SearchableSelect
+            label="Kategori *"
+            value={category}
+            options={[
+              { value: "Country", label: "Ülke" },
+              { value: "Criticality", label: "Kritiklik" },
+            ]}
+            onChange={(value) => setCategory(value ?? "Country")}
+          />
+          <TextField
+            required
+            label="Değişmez kod"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+          <TextField
+            required
+            fullWidth
+            label="Görünen ad"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <TextField
+            type="number"
+            label="Sıra"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(Number(event.target.value))}
+            sx={{ width: 100 }}
+          />
+          <Button
+            variant="contained"
+            disabled={!code || !name || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Ekle
+          </Button>
+        </Stack>
+        {(query.isError || create.isError || update.isError) && (
+          <Alert severity="error">
+            {query.error?.message ??
+              create.error?.message ??
+              update.error?.message}
+          </Alert>
+        )}
+        <Stack spacing={1}>
+          {query.data?.map((item) => (
+            <SupplierAuditLookupRow
+              key={item.id}
+              item={item}
+              saving={update.isPending}
+              save={(rowName, order, active) =>
+                update.mutate({
+                  id: item.id,
+                  name: rowName,
+                  sortOrder: order,
+                  isActive: active,
+                })
+              }
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
+          Kapat
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+function SupplierAuditLookupRow({
+  item,
+  saving,
+  save,
+}: {
+  item: {
+    category: string;
+    code: string;
+    name: string;
+    sortOrder: number;
+    isActive: boolean;
+  };
+  saving: boolean;
+  save: (name: string, order: number, active: boolean) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [order, setOrder] = useState(item.sortOrder);
+  const [active, setActive] = useState(item.isActive);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.2}
+        sx={{ alignItems: { md: "center" } }}
+      >
+        <Chip
+          size="small"
+          label={item.category === "Country" ? "Ülke" : "Kritiklik"}
+        />
+        <Typography sx={{ minWidth: 150, fontFamily: "monospace" }}>
+          {item.code}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          label="Görünen ad"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Sıra"
+          value={order}
+          onChange={(event) => setOrder(Number(event.target.value))}
+          sx={{ width: 90 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={active}
+              onChange={(event) => setActive(event.target.checked)}
+            />
+          }
+          label="Aktif"
+        />
+        <Button
+          variant="outlined"
+          disabled={!name || saving}
+          onClick={() => save(name, order, active)}
+        >
+          Kaydet
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
 function CreateDialog({
   open,
   onClose,
@@ -536,26 +753,32 @@ function CreateDialog({
     supplierEvaluationId: null,
     supplierCode: "",
     supplierName: "",
-    supplierScope: "Primer ambalaj",
+    supplierScope: "",
     materialOrService: "",
-    country: "Türkiye",
-    criticality: "Yüksek",
+    country: "",
+    criticality: "",
     pastPerformanceScore: 80,
     openFindingCount: 0,
-    scope: "GMP kalite sistemi, değişiklik yönetimi ve tedarik sürekliliği",
+    scope: "",
     site: "",
     leadAuditorUserId: user.id,
     leadAuditor: user.displayName,
-    leadAuditorDepartment: "Kalite Güvence",
-    purchasingOwner: "Satınalma Müdürü",
+    leadAuditorDepartment: "",
+    purchasingOwner: "",
+    purchasingOwnerUserId: "",
+    verifierUserId: "",
+    qualityApproverUserId: "",
     plannedStartUtc: start,
     plannedEndUtc: end,
-    checklistVersion: "SA-2026.1",
+    checklistVersion: "",
     checklist: [],
   });
-  const [questions, setQuestions] = useState(
-    "Kalite Sistemleri | Değişiklikler müşteriye zamanında bildiriliyor mu? | GMP Bölüm 5\nÜretim | Kritik prosesler valide edilmiş mi? | GMP Annex 15\nTedarik Zinciri | İzlenebilirlik ve süreklilik planı güncel mi? | ISO 9001 8.4",
-  );
+  const [questions, setQuestions] = useState("");
+  const options = useQuery({
+    queryKey: ["m09-options"],
+    queryFn: ({ signal }) => getSupplierAuditOptions(signal),
+    enabled: open,
+  });
   const qc = useQueryClient();
   const m = useMutation({
     mutationFn: createSupplierAudit,
@@ -586,8 +809,15 @@ function CreateDialog({
     form.supplierCode &&
     form.supplierName &&
     form.materialOrService &&
+    form.country &&
+    form.criticality &&
+    form.scope &&
     form.site &&
     form.leadAuditorUserId &&
+    form.purchasingOwnerUserId &&
+    form.verifierUserId &&
+    form.qualityApproverUserId &&
+    form.checklistVersion &&
     checklist.length > 0;
   return (
     <Dialog
@@ -627,10 +857,14 @@ function CreateDialog({
               value={form.materialOrService}
               onChange={(e) => set("materialOrService", e.target.value)}
             />
-            <TextField
-              label="Ülke"
+            <SearchableSelect
+              label="Ülke *"
               value={form.country}
-              onChange={(e) => set("country", e.target.value)}
+              options={(options.data?.countries ?? []).map((item) => ({
+                value: item.code,
+                label: item.name,
+              }))}
+              onChange={(value) => set("country", value ?? "")}
             />
             <TextField
               label="Denetim sahası"
@@ -640,11 +874,11 @@ function CreateDialog({
             <SearchableSelect
               label="Kritiklik"
               value={form.criticality}
-              options={["Kritik", "Yüksek", "Orta", "Düşük"].map((value) => ({
-                value,
-                label: value,
+              options={(options.data?.criticalities ?? []).map((item) => ({
+                value: item.code,
+                label: item.name,
               }))}
-              onChange={(v) => set("criticality", v ?? "Yüksek")}
+              onChange={(v) => set("criticality", v ?? "")}
             />
             <TextField
               type="number"
@@ -660,20 +894,64 @@ function CreateDialog({
               value={form.openFindingCount}
               onChange={(e) => set("openFindingCount", Number(e.target.value))}
             />
-            <TextField
-              label="Satınalma sorumlusu"
-              value={form.purchasingOwner}
-              onChange={(e) => set("purchasingOwner", e.target.value)}
+            <SearchableSelect
+              label="Satınalma sorumlusu *"
+              value={form.purchasingOwnerUserId}
+              options={(options.data?.users ?? []).map((item) => ({
+                value: item.id,
+                label: item.department
+                  ? `${item.name} · ${item.department}`
+                  : item.name,
+              }))}
+              onChange={(value) => {
+                const selected = options.data?.users.find(
+                  (item) => item.id === value,
+                );
+                set("purchasingOwnerUserId", value ?? "");
+                set("purchasingOwner", selected?.name ?? "");
+              }}
             />
-            <TextField
-              label="Baş denetçi"
-              value={form.leadAuditor}
-              onChange={(e) => set("leadAuditor", e.target.value)}
+            <SearchableSelect
+              label="Baş denetçi *"
+              value={form.leadAuditorUserId}
+              options={(options.data?.users ?? []).map((item) => ({
+                value: item.id,
+                label: item.department
+                  ? `${item.name} · ${item.department}`
+                  : item.name,
+              }))}
+              onChange={(value) => {
+                const selected = options.data?.users.find(
+                  (item) => item.id === value,
+                );
+                set("leadAuditorUserId", value ?? "");
+                set("leadAuditor", selected?.name ?? "");
+                set("leadAuditorDepartment", selected?.department ?? "");
+              }}
             />
-            <TextField
-              label="Denetçi bölümü"
-              value={form.leadAuditorDepartment}
-              onChange={(e) => set("leadAuditorDepartment", e.target.value)}
+            <SearchableSelect
+              label="Kanıt doğrulayıcısı *"
+              value={form.verifierUserId}
+              options={(options.data?.users ?? []).map((item) => ({
+                value: item.id,
+                label: item.department
+                  ? `${item.name} · ${item.department}`
+                  : item.name,
+              }))}
+              onChange={(value) => set("verifierUserId", value ?? "")}
+            />
+            <SearchableSelect
+              label="Bağımsız kalite onaylayanı *"
+              value={form.qualityApproverUserId}
+              options={(options.data?.users ?? [])
+                .filter((item) => item.id !== user.id)
+                .map((item) => ({
+                  value: item.id,
+                  label: item.department
+                    ? `${item.name} · ${item.department}`
+                    : item.name,
+                }))}
+              onChange={(value) => set("qualityApproverUserId", value ?? "")}
             />
             <TextField
               type="datetime-local"
@@ -807,6 +1085,18 @@ function DetailsDialog({
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1}>
+                {d.record.status === "Closed" && (
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    startIcon={<DownloadRounded />}
+                    onClick={() =>
+                      downloadSupplierAuditFinalReport(d.record.id)
+                    }
+                  >
+                    Nihai PDF
+                  </Button>
+                )}
                 <Chip
                   label={`${d.record.riskScore} · ${d.record.riskBand}`}
                   color={d.record.riskBand === "Kritik" ? "error" : "warning"}
@@ -886,6 +1176,27 @@ function DetailsDialog({
                   aggregateType="SupplierAudit"
                   aggregateId={d.record.id}
                 />
+                {d.signatures.length > 0 && (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>
+                      Elektronik imzalar
+                    </Typography>
+                    <Stack spacing={1}>
+                      {d.signatures.map((signature) => (
+                        <Box key={signature.id}>
+                          <Typography variant="subtitle2">
+                            {signature.meaning}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {signature.signedBy} · {dt(signature.signedAtUtc)} ·
+                            v{signature.recordVersion} ·{" "}
+                            {signature.hash.slice(0, 16)}…
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                )}
               </Stack>
             )}{" "}
             {tab === 6 && (
@@ -1117,13 +1428,18 @@ function Findings({
   update: (x: SupplierAuditDetails) => void;
 }) {
   const { can } = useAuth();
+  const options = useQuery({
+    queryKey: ["m09-options"],
+    queryFn: ({ signal }) => getSupplierAuditOptions(signal),
+  });
   const [form, setForm] = useState(() => ({
     title: "",
     description: "",
     requirementReference: "",
     classification: "Major",
     capaRequired: true,
-    owner: "Tedarikçi Kalite Müdürü",
+    ownerUserId: "",
+    owner: "",
     responseDueAtUtc: new Date(Date.now() + 30 * 86400000)
       .toISOString()
       .slice(0, 16),
@@ -1182,12 +1498,25 @@ function Findings({
                   }))
                 }
               />
-              <TextField
-                label="Sorumlu"
-                value={form.owner}
-                onChange={(e) =>
-                  setForm((x) => ({ ...x, owner: e.target.value }))
-                }
+              <SearchableSelect
+                label="Sorumlu *"
+                value={form.ownerUserId}
+                options={(options.data?.users ?? []).map((item) => ({
+                  value: item.id,
+                  label: item.department
+                    ? `${item.name} · ${item.department}`
+                    : item.name,
+                }))}
+                onChange={(value) => {
+                  const selected = options.data?.users.find(
+                    (item) => item.id === value,
+                  );
+                  setForm((x) => ({
+                    ...x,
+                    ownerUserId: value ?? "",
+                    owner: selected?.name ?? "",
+                  }));
+                }}
               />
               <TextField
                 type="datetime-local"
@@ -1227,6 +1556,7 @@ function Findings({
                 !form.title ||
                 !form.description ||
                 !form.requirementReference ||
+                !form.ownerUserId ||
                 m.isPending
               }
               onClick={() => m.mutate()}
@@ -1261,6 +1591,8 @@ function FindingCard({
   );
   const [evidence, setEvidence] = useState("");
   const [note, setNote] = useState("");
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const respond = useMutation({
     mutationFn: () =>
       respondSupplierAuditFinding(
@@ -1285,7 +1617,14 @@ function FindingCard({
   });
   const close = useMutation({
     mutationFn: () =>
-      closeSupplierAuditFinding(d.record.id, f.id, d.record.version, note),
+      closeSupplierAuditFinding(
+        d.record.id,
+        f.id,
+        d.record.version,
+        note,
+        signaturePassword,
+        signatureAccepted,
+      ),
     onSuccess: update,
   });
   return (
@@ -1365,11 +1704,7 @@ function FindingCard({
           d.record.status,
         ) &&
         f.status === "ResponseSubmitted" && (
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={1}
-            sx={{ mt: 1.5 }}
-          >
+          <Stack spacing={1} sx={{ mt: 1.5 }}>
             <TextField
               fullWidth
               label="Tedarikçi kanıtı / manifest"
@@ -1399,9 +1734,29 @@ function FindingCard({
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
+            <TextField
+              type="password"
+              label="E-imza parolası *"
+              value={signaturePassword}
+              onChange={(e) => setSignaturePassword(e.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={signatureAccepted}
+                  onChange={(e) => setSignatureAccepted(e.target.checked)}
+                />
+              }
+              label="Kanıt doğrulama ve bulgu kapanış e-imzasının anlamını kabul ediyorum"
+            />
             <Button
               variant="contained"
-              disabled={!note || close.isPending}
+              disabled={
+                !note ||
+                !signaturePassword ||
+                !signatureAccepted ||
+                close.isPending
+              }
               onClick={() => close.mutate()}
             >
               Bulguyu doğrula ve kapat
@@ -1537,6 +1892,8 @@ function Result({
     new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
   );
   const [requal, setRequal] = useState(d.record.requalificationRequired);
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const m = useMutation({
     mutationFn: () =>
       recordSupplierAuditResult(
@@ -1546,6 +1903,8 @@ function Result({
         rationale,
         validUntil ? new Date(validUntil).toISOString() : null,
         requal,
+        signaturePassword,
+        signatureAccepted,
       ),
     onSuccess: update,
   });
@@ -1625,9 +1984,30 @@ function Result({
               }
               label="M.16 yeniden nitelendirme değerlendirmesi gerekli"
             />
+            <TextField
+              fullWidth
+              type="password"
+              label="E-imza parolası *"
+              value={signaturePassword}
+              onChange={(e) => setSignaturePassword(e.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={signatureAccepted}
+                  onChange={(e) => setSignatureAccepted(e.target.checked)}
+                />
+              }
+              label="Nitelendirme kararının e-imza anlamını kabul ediyorum"
+            />
             <Button
               variant="contained"
-              disabled={!rationale || m.isPending}
+              disabled={
+                !rationale ||
+                !signaturePassword ||
+                !signatureAccepted ||
+                m.isPending
+              }
               onClick={() => m.mutate()}
             >
               Nitelendirme kararını kaydet
@@ -1652,9 +2032,17 @@ function AuditActions({
 }) {
   const { can } = useAuth();
   const [error, setError] = useState("");
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const m = useMutation({
     mutationFn: (code: string) =>
-      transitionSupplierAudit(details.record.id, details.record.version, code),
+      transitionSupplierAudit(
+        details.record.id,
+        details.record.version,
+        code,
+        code === "close" ? signaturePassword : undefined,
+        code === "close" && signatureAccepted,
+      ),
     onSuccess: (d) => {
       setError("");
       update(d);
@@ -1732,14 +2120,39 @@ function AuditActions({
         </Alert>
       )}
       {details.availableTransitions.map((t) => (
-        <Button
-          key={t.code}
-          variant="contained"
-          disabled={m.isPending || Boolean(blocker(t.code))}
-          onClick={() => m.mutate(t.code)}
-        >
-          {t.label}
-        </Button>
+        <Stack key={t.code} spacing={1}>
+          {t.code === "close" && (
+            <>
+              <TextField
+                size="small"
+                type="password"
+                label="E-imza parolası *"
+                value={signaturePassword}
+                onChange={(e) => setSignaturePassword(e.target.value)}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={signatureAccepted}
+                    onChange={(e) => setSignatureAccepted(e.target.checked)}
+                  />
+                }
+                label="Nihai kapanış e-imzasını kabul ediyorum"
+              />
+            </>
+          )}
+          <Button
+            variant="contained"
+            disabled={
+              m.isPending ||
+              Boolean(blocker(t.code)) ||
+              (t.code === "close" && (!signaturePassword || !signatureAccepted))
+            }
+            onClick={() => m.mutate(t.code)}
+          >
+            {t.label}
+          </Button>
+        </Stack>
       ))}
     </DialogActions>
   );

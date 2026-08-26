@@ -1,0 +1,18 @@
+using System.Text.Json;
+using Qms.Contracts.Common;
+namespace Qms.Contracts.WorkItems;
+public sealed record WorkItemSearchRequest(int Page=1,int PageSize=25,string SortBy="createdAtUtc",string SortDirection="desc",IReadOnlyList<ColumnFilterRequest>? Filters=null);
+public sealed record WorkItemIdentityOption(Guid Id,string Name,string? Department);
+public sealed record WorkItemCodeOption(string Code,string Name);
+public sealed record WorkItemOptionsResponse(IReadOnlyList<WorkItemIdentityOption> Users,IReadOnlyList<WorkItemCodeOption> Categories,IReadOnlyList<WorkItemCodeOption> Priorities);
+public sealed record WorkItemLookupDefinitionResponse(Guid Id,string Category,string Code,string Name,int SortOrder,bool IsActive);
+public sealed record CreateWorkItemLookupDefinitionRequest(string Category,string Code,string Name,int SortOrder);
+public sealed record UpdateWorkItemLookupDefinitionRequest(string Name,int SortOrder,bool IsActive);
+public sealed record CreateWorkItemRequest(string? SourceModule,Guid? SourceRecordId,string? SourceRecordNumber,string Category,string Priority,string Title,string Description,Guid OwnerUserId,Guid VerifierUserId,DateTimeOffset DueAtUtc);
+public sealed record TransitionWorkItemRequest(long ExpectedVersion,string Transition,string? Evidence=null,bool Approved=false,string? Note=null,string? SignaturePassword=null,bool SignatureMeaningAccepted=false);
+public sealed record WorkItemListItemResponse(Guid Id,string RecordNumber,string Title,string Category,string Priority,string Owner,DateTimeOffset DueAtUtc,bool IsOverdue,string Status,DateTimeOffset CreatedAtUtc,long Version);
+public sealed record WorkItemRecordResponse(Guid Id,Guid QualityRecordId,string RecordNumber,string? SourceModule,Guid? SourceRecordId,string? SourceRecordNumber,string Category,string Priority,string Title,string Description,Guid OwnerUserId,string Owner,Guid? OwnerDepartmentId,string? OwnerDepartment,Guid VerifierUserId,string Verifier,DateTimeOffset DueAtUtc,bool IsOverdue,string? CompletionEvidence,string? VerificationNote,string Status,DateTimeOffset CreatedAtUtc,DateTimeOffset UpdatedAtUtc,DateTimeOffset? StartedAtUtc,DateTimeOffset? SubmittedAtUtc,DateTimeOffset? CompletedAtUtc,DateTimeOffset? CancelledAtUtc,long Version);
+public sealed record WorkItemEventResponse(Guid Id,long Version,string EventType,string Actor,DateTimeOffset OccurredAtUtc,string? Reason,JsonElement Payload);
+public sealed record WorkItemSignatureResponse(Guid Id,long RecordVersion,Guid SignerUserId,string Signer,string Meaning,DateTimeOffset SignedAtUtc,string ContentHash,string? Comment);
+public sealed record WorkItemTransitionResponse(string Code,string Label,bool RequiresSignature=false);
+public sealed record WorkItemDetailsResponse(WorkItemRecordResponse Record,IReadOnlyList<WorkItemEventResponse> AuditTrail,IReadOnlyList<WorkItemSignatureResponse> Signatures,IReadOnlyList<WorkItemTransitionResponse> AvailableTransitions);

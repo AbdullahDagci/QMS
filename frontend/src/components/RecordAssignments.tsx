@@ -45,6 +45,16 @@ const taskLabels: Record<string, string> = {
   SupplierResponder: "Tedarikçi yanıt sorumlusu",
   SupplierAuditVerifier: "Tedarikçi kanıt doğrulayıcısı",
   SupplierQualityApprover: "Tedarikçi kalite onaylayanı",
+  WorkItemOwner: "İş sorumlusu",
+  WorkItemVerifier: "Bağımsız iş doğrulayıcısı",
+  RiskOwner: "Risk sahibi",
+  RiskApprover: "Bağımsız risk onaylayanı",
+  MbrAuthor: "MBR yazarı",
+  MbrReviewer: "MBR teknik inceleyeni",
+  MbrApprover: "MBR kalite onaylayanı",
+  SpecializedOwner: "Kayıt sorumlusu",
+  SpecializedReviewer: "Bağımsız inceleyen",
+  SpecializedApprover: "Kalite / yetkili onaylayan",
 };
 
 const statusLabels: Record<string, string> = {
@@ -66,7 +76,11 @@ export function RecordAssignments({
     | "Complaint"
     | "InternalAudit"
     | "ExternalAudit"
-    | "SupplierAudit";
+    | "SupplierAudit"
+    | "WorkItem"
+    | "RiskAssessment"
+    | "MasterBatchRecord"
+    | "SpecializedRecord";
   aggregateId: string;
 }) {
   const assignments = useQuery({
@@ -113,32 +127,19 @@ export function RecordAssignments({
             variant="outlined"
             className={`record-assignment-card status-${assignment.status.toLowerCase()}`}
           >
-            <Stack
-              direction="row"
-              sx={{
-                justifyContent: "space-between",
-                gap: 1,
-                alignItems: "flex-start",
-              }}
-            >
-              <Box>
-                <Typography variant="overline" color="text.secondary">
-                  {taskLabel(assignment.taskRole)}
-                </Typography>
-                <Typography sx={{ fontWeight: 780 }}>
-                  {assignment.assignedUserName}
-                </Typography>
-              </Box>
-              <Chip
-                size="small"
-                color={assignment.status === "Active" ? "success" : "default"}
-                label={statusLabels[assignment.status] ?? assignment.status}
-              />
-            </Stack>
+            <Box className="assignment-identity">
+              <Typography variant="overline" color="text.secondary">
+                {taskLabel(assignment.taskRole)}
+              </Typography>
+              <Typography sx={{ fontWeight: 780 }}>
+                {assignment.assignedUserName}
+              </Typography>
+            </Box>
             <Stack
               direction="row"
               spacing={1.5}
-              sx={{ mt: 1.2, flexWrap: "wrap", color: "text.secondary" }}
+              className="assignment-meta"
+              sx={{ flexWrap: "wrap", color: "text.secondary" }}
             >
               {assignment.departmentName && (
                 <Typography variant="caption">
@@ -149,6 +150,12 @@ export function RecordAssignments({
                 <ScheduleRounded /> {formatDate(assignment.assignedAtUtc)}
               </Typography>
             </Stack>
+            <Chip
+              className="assignment-status"
+              size="small"
+              color={assignment.status === "Active" ? "success" : "default"}
+              label={statusLabels[assignment.status] ?? assignment.status}
+            />
           </Paper>
         ))}
       </Box>
@@ -157,8 +164,15 @@ export function RecordAssignments({
 }
 
 function taskLabel(value: string) {
+  if (value.startsWith("ActionOwner:")) return "Aksiyon sorumlusu";
   if (value.startsWith("Assessment:")) return "Bölüm değerlendirmesi";
   if (value.startsWith("DocumentReview:")) return "Doküman incelemesi";
+  if (value.startsWith("AuditFinding:")) return "İç denetim bulgu sorumlusu";
+  if (value.startsWith("ExternalAuditFinding:"))
+    return "Dış denetim bulgu sorumlusu";
+  if (value.startsWith("SupplierAuditFinding:"))
+    return "Tedarikçi denetimi bulgu sorumlusu";
+  if (value.startsWith("RiskAction:")) return "Risk azaltma aksiyonu sorumlusu";
   return taskLabels[value] ?? value;
 }
 

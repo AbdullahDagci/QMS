@@ -12,5 +12,7 @@ public sealed class ChangeImplementationActionConfiguration : IEntityTypeConfigu
         builder.Property(x => x.Category).HasMaxLength(80).IsRequired(); builder.Property(x => x.Description).HasMaxLength(2000).IsRequired(); builder.Property(x => x.Owner).HasMaxLength(160).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired(); builder.Property(x => x.CompletionEvidence).HasMaxLength(3000); builder.Property(x => x.VerificationNote).HasMaxLength(2000);
         builder.HasIndex(x => new { x.ChangeControlId, x.Status });
+        builder.HasOne<Qms.Infrastructure.Identity.ApplicationUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.OwnerUserId);
     }
 }

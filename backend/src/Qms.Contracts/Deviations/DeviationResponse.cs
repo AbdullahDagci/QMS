@@ -18,6 +18,7 @@ public sealed record DeviationResponse(
     int Severity,
     int Detectability,
     int RiskScore,
+    string RiskMatrixVersion,
     string Classification,
     bool CapaRequired,
     string Status,

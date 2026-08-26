@@ -74,6 +74,22 @@ public sealed class DeviationEndpointTests
 
     private sealed class FakeDeviationService : IDeviationService
     {
+        public Task<DeviationLookupsResponse> GetLookupsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new DeviationLookupsResponse([], []));
+
+        public Task<IReadOnlyList<DeviationTypeResponse>> ListDeviationTypesAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<DeviationTypeResponse>>([]);
+
+        public Task<DeviationTypeResponse> CreateDeviationTypeAsync(CreateDeviationTypeRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(new DeviationTypeResponse(Guid.NewGuid(), request.Code, request.Name, request.SortOrder, true));
+
+        public Task<DeviationTypeResponse?> UpdateDeviationTypeAsync(Guid id, UpdateDeviationTypeRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult<DeviationTypeResponse?>(new DeviationTypeResponse(id, "TEST", request.Name, request.SortOrder, request.IsActive));
+
+        public Task<IReadOnlyList<DeviationAssignmentRuleResponse>> ListAssignmentRulesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DeviationAssignmentRuleResponse>>([]);
+        public Task<DeviationAssignmentRuleResponse> CreateAssignmentRuleAsync(SaveDeviationAssignmentRuleRequest request, CancellationToken cancellationToken) => Task.FromResult(new DeviationAssignmentRuleResponse(Guid.NewGuid(), request.TaskRole, request.AssignedUserId, "Test", request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, request.IsActive));
+        public Task<DeviationAssignmentRuleResponse?> UpdateAssignmentRuleAsync(Guid id, SaveDeviationAssignmentRuleRequest request, CancellationToken cancellationToken) => Task.FromResult<DeviationAssignmentRuleResponse?>(new DeviationAssignmentRuleResponse(id, request.TaskRole, request.AssignedUserId, "Test", request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, request.IsActive));
+
         public Task<IReadOnlyList<DeviationListItemResponse>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<DeviationListItemResponse>>([]);
 
@@ -108,6 +124,7 @@ public sealed class DeviationEndpointTests
                 request.Severity,
                 request.Detectability,
                 27,
+                "M01-RISK-1.0",
                 "Major",
                 true,
                 "Draft",

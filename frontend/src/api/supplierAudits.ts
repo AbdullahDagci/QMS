@@ -1,6 +1,14 @@
 import type { ColumnFilter, PagedResponse } from "./deviations";
 import { qmsFetch } from "./http";
 
+export interface SupplierAuditOptions {
+  users: Array<{ id: string; name: string; department: string | null }>;
+  countries: Array<{ code: string; name: string }>;
+  criticalities: Array<{ code: string; name: string }>;
+  findingClassifications: Array<{ code: string; name: string }>;
+}
+export interface SupplierAuditLookupDefinition { id: string; category: string; code: string; name: string; sortOrder: number; isActive: boolean }
+
 export interface SupplierAuditListItem {
   id: string;
   recordNumber: string;
@@ -32,6 +40,11 @@ export interface SupplierAuditRecord extends SupplierAuditListItem {
   leadAuditor: string;
   leadAuditorDepartment: string;
   purchasingOwner: string;
+  purchasingOwnerUserId: string;
+  verifierUserId: string;
+  verifier: string;
+  qualityApproverUserId: string;
+  qualityApprover: string;
   plannedEndUtc: string;
   checklistVersion: string;
   checklistLockedAtUtc: string | null;
@@ -62,6 +75,7 @@ export interface SupplierAuditFinding {
   capaRequired: boolean;
   linkedCapaId: string | null;
   linkedCapaNumber: string | null;
+  ownerUserId: string;
   owner: string;
   responseDueAtUtc: string;
   supplierResponse: string | null;
@@ -95,6 +109,7 @@ export interface SupplierAuditDetails {
     payload?: Record<string, unknown>;
   }>;
   availableTransitions: Array<{ code: string; label: string }>;
+  signatures: Array<{ id: string; recordVersion: number; signedByUserId: string; signedBy: string; meaning: string; signedAtUtc: string; hash: string; reason: string | null }>;
 }
 export interface CreateSupplierAuditInput {
   supplierEvaluationId: string | null;
@@ -112,6 +127,9 @@ export interface CreateSupplierAuditInput {
   leadAuditor: string;
   leadAuditorDepartment: string;
   purchasingOwner: string;
+  purchasingOwnerUserId: string;
+  verifierUserId: string;
+  qualityApproverUserId: string;
   plannedStartUtc: string;
   plannedEndUtc: string;
   checklistVersion: string;
@@ -150,6 +168,12 @@ export const getSupplierAuditDetails = (id: string, signal?: AbortSignal) =>
   request<SupplierAuditDetails>(`/api/v1/supplier-audits/${id}/details`, {
     signal,
   });
+export const getSupplierAuditOptions = (signal?: AbortSignal) =>
+  request<SupplierAuditOptions>("/api/v1/supplier-audits/options", { signal });
+export const getSupplierAuditLookupDefinitions = () => request<SupplierAuditLookupDefinition[]>("/api/v1/supplier-audits/lookups");
+export const createSupplierAuditLookupDefinition = (input: { category: string; code: string; name: string; sortOrder: number }) => request<SupplierAuditLookupDefinition>("/api/v1/supplier-audits/lookups", { method: "POST", headers: json, body: JSON.stringify(input) });
+export const updateSupplierAuditLookupDefinition = (id: string, input: { name: string; sortOrder: number; isActive: boolean }) => request<SupplierAuditLookupDefinition>(`/api/v1/supplier-audits/lookups/${id}`, { method: "PUT", headers: json, body: JSON.stringify(input) });
+export async function downloadSupplierAuditFinalReport(id: string) { const response = await qmsFetch(`/api/v1/supplier-audits/${id}/final-report`); if (!response.ok) throw new Error("Nihai tedarikçi denetimi PDF'i indirilemedi."); const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `tedarikci-denetimi-${id}.pdf`; anchor.click(); URL.revokeObjectURL(url); }
 export const createSupplierAudit = (input: CreateSupplierAuditInput) =>
   request<SupplierAuditDetails>("/api/v1/supplier-audits", {
     method: "POST",
@@ -160,11 +184,13 @@ export const transitionSupplierAudit = (
   id: string,
   expectedVersion: number,
   transition: string,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
 ) =>
   request<SupplierAuditDetails>(`/api/v1/supplier-audits/${id}/transitions`, {
     method: "POST",
     headers: json,
-    body: JSON.stringify({ expectedVersion, transition }),
+    body: JSON.stringify({ expectedVersion, transition, signaturePassword, signatureMeaningAccepted }),
   });
 export const answerSupplierAuditChecklist = (
   id: string,
@@ -191,6 +217,7 @@ export const addSupplierAuditFinding = (
     requirementReference: string;
     classification: string;
     capaRequired: boolean;
+    ownerUserId: string;
     owner: string;
     responseDueAtUtc: string;
   },
@@ -240,13 +267,15 @@ export const closeSupplierAuditFinding = (
   findingId: string,
   expectedVersion: number,
   verificationNote: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<SupplierAuditDetails>(
     `/api/v1/supplier-audits/${id}/findings/${findingId}/close`,
     {
       method: "POST",
       headers: json,
-      body: JSON.stringify({ expectedVersion, verificationNote }),
+      body: JSON.stringify({ expectedVersion, verificationNote, signaturePassword, signatureMeaningAccepted }),
     },
   );
 export const createSupplierAuditInvitation = (
@@ -271,6 +300,8 @@ export const recordSupplierAuditResult = (
   rationale: string,
   validUntilUtc: string | null,
   requalificationRequired: boolean,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<SupplierAuditDetails>(`/api/v1/supplier-audits/${id}/result`, {
     method: "POST",
@@ -281,5 +312,7 @@ export const recordSupplierAuditResult = (
       rationale,
       validUntilUtc,
       requalificationRequired,
+      signaturePassword,
+      signatureMeaningAccepted,
     }),
   });

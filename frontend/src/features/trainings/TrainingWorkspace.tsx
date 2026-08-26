@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
@@ -37,11 +37,13 @@ import {
   BadgeRounded,
   CheckCircleRounded,
   DescriptionRounded,
+  DownloadRounded,
   FactCheckRounded,
   HistoryRounded,
   MenuBookRounded,
   QuizRounded,
   SchoolRounded,
+  SettingsRounded,
   TaskAltRounded,
   VerifiedRounded,
   WorkspacePremiumRounded,
@@ -50,16 +52,21 @@ import {
   acknowledgeTraining,
   createTraining,
   createTrainingMatrix,
+  createTrainingLookupDefinition,
+  downloadTrainingFinalReport,
   getTrainingDetails,
   getTrainingMatrix,
   getTrainingOptions,
+  listTrainingLookupDefinitions,
   recordTrainingAssessment,
   searchTrainings,
   transitionTraining,
+  updateTrainingLookupDefinition,
   type CreateTrainingInput,
   type TrainingDetails,
   type TrainingListItem,
   type TrainingMatrixRule,
+  type TrainingLookupDefinition,
 } from "../../api/trainings";
 import { AdvancedFilterButton } from "../../components/AdvancedFilterPanel";
 import { AuditTimeline } from "../../components/AuditTimeline";
@@ -146,6 +153,7 @@ export function TrainingWorkspace() {
   const [createOpen, setCreateOpen] = useState(false);
   const [matrixOpen, setMatrixOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const { can } = useAuth();
   const columnFilters = useMemo(
     () => toTrainingColumnFilters(filters),
@@ -182,7 +190,7 @@ export function TrainingWorkspace() {
     setPage(0);
   };
   return (
-    <Box component="section">
+    <Box component="section" className="module-unified-page">
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -206,6 +214,15 @@ export function TrainingWorkspace() {
         </Box>
         <Stack direction="row" spacing={1.2}>
           <ModuleInfoButton module="M.05" onClick={() => setGuideOpen(true)} />
+          {can(Permissions.administrationManage) && (
+            <Button
+              variant="outlined"
+              startIcon={<SettingsRounded />}
+              onClick={() => setLookupOpen(true)}
+            >
+              Eğitim tanımları
+            </Button>
+          )}
           {can(Permissions.trainingManage) && (
             <Button
               variant="contained"
@@ -218,6 +235,10 @@ export function TrainingWorkspace() {
           )}
         </Stack>
       </Stack>
+      <TrainingLookupDialog
+        open={lookupOpen}
+        onClose={() => setLookupOpen(false)}
+      />
       <Paper variant="outlined" className="training-view-tabs">
         <Tabs value={view} onChange={(_, value) => setView(value)}>
           <Tab
@@ -235,6 +256,7 @@ export function TrainingWorkspace() {
       {view === 0 ? (
         <>
           <Stack
+            className="module-list-toolbar"
             direction="row"
             spacing={1.5}
             sx={{ mt: 2.5, alignItems: "center" }}
@@ -601,6 +623,196 @@ function MatrixView({
   );
 }
 
+const trainingLookupCategories = [
+  { value: "AssessmentMode", label: "Değerlendirme yöntemi" },
+  { value: "DeliveryMethod", label: "Eğitim yöntemi" },
+];
+function TrainingLookupDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const [category, setCategory] = useState("AssessmentMode");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [sortOrder, setSortOrder] = useState(100);
+  const q = useQuery({
+    queryKey: ["training-lookup-definitions"],
+    queryFn: ({ signal }) => listTrainingLookupDefinitions(signal),
+    enabled: open,
+    retry: false,
+  });
+  const refresh = async () => {
+    await client.invalidateQueries({
+      queryKey: ["training-lookup-definitions"],
+    });
+    await client.invalidateQueries({ queryKey: ["training-options"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      createTrainingLookupDefinition({ category, code, name, sortOrder }),
+    onSuccess: async () => {
+      setCode("");
+      setName("");
+      await refresh();
+    },
+  });
+  const update = useMutation({
+    mutationFn: (x: {
+      id: string;
+      name: string;
+      sortOrder: number;
+      isActive: boolean;
+    }) => updateTrainingLookupDefinition(x.id, x),
+    onSuccess: refresh,
+  });
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <ModalHeader onClose={onClose}>
+        <Box>
+          <Typography variant="overline">M.05 · YÖNETİLEN LOOKUP</Typography>
+          <Typography variant="h5">Eğitim tanımları</Typography>
+          <Typography color="text.secondary">
+            Kodlar geçmiş kayıtlarda snapshot olarak korunur; ad ve aktiflik
+            yeni seçimleri yönetir.
+          </Typography>
+        </Box>
+      </ModalHeader>
+      <DialogContent dividers>
+        {(q.isError || create.isError || update.isError) && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {q.error?.message ?? create.error?.message ?? update.error?.message}
+          </Alert>
+        )}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+            <Box sx={{ minWidth: 190 }}>
+              <SearchableSelect
+                label="Kategori"
+                value={category}
+                options={trainingLookupCategories}
+                onChange={(v) => setCategory(v ?? "AssessmentMode")}
+                size="medium"
+              />
+            </Box>
+            <TextField
+              required
+              label="Değişmez kod"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <TextField
+              required
+              fullWidth
+              label="Görünen ad"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <TextField
+              type="number"
+              label="Sıra"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              sx={{ width: 100 }}
+            />
+            <Button
+              variant="contained"
+              disabled={!code.trim() || !name.trim() || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              Ekle
+            </Button>
+          </Stack>
+        </Paper>
+        <Stack spacing={1}>
+          {q.data?.map((x) => (
+            <TrainingLookupRow
+              key={x.id}
+              item={x}
+              saving={update.isPending}
+              onSave={(name, sortOrder, isActive) =>
+                update.mutate({ id: x.id, name, sortOrder, isActive })
+              }
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
+          Kapat
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+function TrainingLookupRow({
+  item,
+  saving,
+  onSave,
+}: {
+  item: TrainingLookupDefinition;
+  saving: boolean;
+  onSave: (name: string, sortOrder: number, isActive: boolean) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [sortOrder, setSortOrder] = useState(item.sortOrder);
+  const [isActive, setActive] = useState(item.isActive);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        sx={{ alignItems: { md: "center" } }}
+      >
+        <Chip
+          size="small"
+          label={
+            trainingLookupCategories.find((x) => x.value === item.category)
+              ?.label ?? item.category
+          }
+        />
+        <Typography sx={{ minWidth: 150, fontFamily: "monospace" }}>
+          {item.code}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          label="Görünen ad"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Sıra"
+          value={sortOrder}
+          onChange={(e) => setSortOrder(Number(e.target.value))}
+          sx={{ width: 90 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={isActive}
+              onChange={(e) => setActive(e.target.checked)}
+            />
+          }
+          label="Aktif"
+        />
+        <Button
+          variant="outlined"
+          disabled={!name.trim() || saving}
+          onClick={() => onSave(name, sortOrder, isActive)}
+        >
+          Kaydet
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
+
 function CreateTrainingDialog({
   open,
   onClose,
@@ -619,7 +831,7 @@ function CreateTrainingDialog({
   });
   const [form, setForm] = useState<CreateTrainingInput>({
     employeeUserId: "",
-    position: "",
+    positionId: "",
     courseCode: "",
     courseTitle: "",
     assessmentMode: "ReadAndAcknowledge",
@@ -631,6 +843,22 @@ function CreateTrainingDialog({
     dueAtUtc: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16),
     assignNow: true,
   });
+  useEffect(() => {
+    if (!options.data) return;
+    setForm((x) => ({
+      ...x,
+      assessmentMode: options.data!.assessmentModes.some(
+        (v) => v.code === x.assessmentMode,
+      )
+        ? x.assessmentMode
+        : (options.data!.assessmentModes[0]?.code ?? ""),
+      deliveryMethod: options.data!.deliveryMethods.some(
+        (v) => v.code === x.deliveryMethod,
+      )
+        ? x.deliveryMethod
+        : (options.data!.deliveryMethods[0]?.code ?? ""),
+    }));
+  }, [options.data]);
   const mutation = useMutation({
     mutationFn: createTraining,
     onSuccess: (data) => {
@@ -647,7 +875,7 @@ function CreateTrainingDialog({
   const submit = () =>
     mutation.mutate({
       ...form,
-      position: employee?.position || form.position,
+      positionId: employee?.positionId || form.positionId,
       documentRevisionId: document?.revisionId ?? null,
       dueAtUtc: new Date(form.dueAtUtc).toISOString(),
     });
@@ -672,15 +900,15 @@ function CreateTrainingDialog({
               setForm((x) => ({
                 ...x,
                 employeeUserId: value ?? "",
-                position:
+                positionId:
                   options.data?.employees.find((e) => e.id === value)
-                    ?.position ?? "",
+                    ?.positionId ?? "",
               }))
             }
           />
           <TextField
             label="Pozisyon"
-            value={employee?.position ?? form.position}
+            value={employee?.position ?? ""}
             disabled
           />
           <SearchableSelect
@@ -722,12 +950,10 @@ function CreateTrainingDialog({
           <SearchableSelect
             label="Değerlendirme yöntemi"
             value={form.assessmentMode}
-            options={[
-              { value: "ReadAndAcknowledge", label: "Oku ve anla" },
-              { value: "Exam", label: "Sınav" },
-              { value: "Practical", label: "Pratik yeterlilik" },
-              { value: "ExamAndPractical", label: "Sınav + pratik" },
-            ]}
+            options={(options.data?.assessmentModes ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
             onChange={(value) =>
               setForm((x) => ({
                 ...x,
@@ -738,12 +964,10 @@ function CreateTrainingDialog({
           <SearchableSelect
             label="Eğitim yöntemi"
             value={form.deliveryMethod}
-            options={[
-              { value: "Electronic", label: "Elektronik" },
-              { value: "Classroom", label: "Sınıf" },
-              { value: "OnTheJob", label: "İş başı" },
-              { value: "Hybrid", label: "Hibrit" },
-            ]}
+            options={(options.data?.deliveryMethods ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
             onChange={(value) =>
               setForm((x) => ({ ...x, deliveryMethod: value ?? "Electronic" }))
             }
@@ -818,6 +1042,7 @@ function CreateTrainingDialog({
           variant="contained"
           disabled={
             !form.employeeUserId ||
+            !form.positionId ||
             !form.courseCode ||
             !form.courseTitle ||
             mutation.isPending
@@ -846,7 +1071,7 @@ function CreateMatrixDialog({
     retry: false,
   });
   const [form, setForm] = useState({
-    position: "",
+    positionId: "",
     courseCode: "",
     courseTitle: "",
     controlledDocumentId: null as string | null,
@@ -857,6 +1082,22 @@ function CreateMatrixDialog({
     isCriticalQualification: false,
     effectiveAtUtc: new Date().toISOString(),
   });
+  useEffect(() => {
+    if (!options.data) return;
+    setForm((x) => ({
+      ...x,
+      assessmentMode: options.data!.assessmentModes.some(
+        (v) => v.code === x.assessmentMode,
+      )
+        ? x.assessmentMode
+        : (options.data!.assessmentModes[0]?.code ?? ""),
+      deliveryMethod: options.data!.deliveryMethods.some(
+        (v) => v.code === x.deliveryMethod,
+      )
+        ? x.deliveryMethod
+        : (options.data!.deliveryMethods[0]?.code ?? ""),
+    }));
+  }, [options.data]);
   const mutation = useMutation({
     mutationFn: createTrainingMatrix,
     onSuccess: () => {
@@ -876,13 +1117,13 @@ function CreateMatrixDialog({
         <Stack spacing={2}>
           <SearchableSelect
             label="Pozisyon"
-            value={form.position}
+            value={form.positionId}
             options={(options.data?.positions ?? []).map((value) => ({
-              value,
-              label: value,
+              value: value.id,
+              label: value.name,
             }))}
             onChange={(value) =>
-              setForm((x) => ({ ...x, position: value ?? "" }))
+              setForm((x) => ({ ...x, positionId: value ?? "" }))
             }
           />
           <SearchableSelect
@@ -922,17 +1163,26 @@ function CreateMatrixDialog({
           <SearchableSelect
             label="Değerlendirme"
             value={form.assessmentMode}
-            options={[
-              { value: "ReadAndAcknowledge", label: "Oku ve anla" },
-              { value: "Exam", label: "Sınav" },
-              { value: "Practical", label: "Pratik" },
-              { value: "ExamAndPractical", label: "Sınav + pratik" },
-            ]}
+            options={(options.data?.assessmentModes ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
             onChange={(value) =>
               setForm((x) => ({
                 ...x,
                 assessmentMode: value ?? "ReadAndAcknowledge",
               }))
+            }
+          />
+          <SearchableSelect
+            label="Eğitim yöntemi"
+            value={form.deliveryMethod}
+            options={(options.data?.deliveryMethods ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
+            onChange={(value) =>
+              setForm((x) => ({ ...x, deliveryMethod: value ?? "" }))
             }
           />
           <Stack direction="row" spacing={2}>
@@ -982,7 +1232,7 @@ function CreateMatrixDialog({
         <Button
           variant="contained"
           disabled={
-            !form.position ||
+            !form.positionId ||
             !form.courseCode ||
             !form.courseTitle ||
             mutation.isPending
@@ -1013,6 +1263,9 @@ function TrainingDetailsDialog({
   const [note, setNote] = useState(
     "Eğitim ve yeterlilik kanıtları uygun bulundu.",
   );
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureMeaningAccepted, setSignatureMeaningAccepted] =
+    useState(false);
   const query = useQuery({
     queryKey: ["training", id],
     queryFn: ({ signal }) => getTrainingDetails(id!, signal),
@@ -1029,6 +1282,17 @@ function TrainingDetailsDialog({
       });
     },
   });
+  const report = useMutation({
+    mutationFn: () => downloadTrainingFinalReport(id!),
+    onSuccess: (x) => {
+      const url = URL.createObjectURL(x.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = x.fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+  });
   const data = query.data;
   const record = data?.record;
   const transition = (code: string) =>
@@ -1039,6 +1303,8 @@ function TrainingDetailsDialog({
         record.version,
         code,
         code === "approve" || code === "cancel" ? note : undefined,
+        code === "approve" ? signaturePassword : undefined,
+        code === "approve" ? signatureMeaningAccepted : false,
       ),
     );
   const step = record
@@ -1088,6 +1354,17 @@ function TrainingDetailsDialog({
                   label="Kritik yeterlilik"
                 />
               )}
+              {record.status === "Completed" && (
+                <Button
+                  color="inherit"
+                  variant="outlined"
+                  startIcon={<DownloadRounded />}
+                  disabled={report.isPending}
+                  onClick={() => report.mutate()}
+                >
+                  Nihai PDF
+                </Button>
+              )}
             </Stack>
           )}
         </Stack>
@@ -1098,12 +1375,18 @@ function TrainingDetailsDialog({
           {query.error.message}
         </Alert>
       )}
+      {report.isError && (
+        <Alert severity="error" sx={{ m: 3 }}>
+          {report.error.message}
+        </Alert>
+      )}
       {data && record && (
-        <>
+        <Box className="record-detail-workspace">
           <Box className="record-detail-tabs-shell">
             <Tabs
               value={tab}
               onChange={(_, value) => setTab(value)}
+              orientation="vertical"
               variant="scrollable"
             >
               <Tab
@@ -1135,7 +1418,7 @@ function TrainingDetailsDialog({
           </Box>
           <DialogContent className="detail-tab-panel">
             {tab === 0 && (
-              <>
+              <Box className="record-tab-canvas overview-canvas">
                 <Paper variant="outlined" className="training-flow-card">
                   <Stack
                     direction="row"
@@ -1214,10 +1497,13 @@ function TrainingDetailsDialog({
                   aggregateType="Training"
                   aggregateId={record.id}
                 />
-              </>
+              </Box>
             )}
             {tab === 1 && (
-              <Paper variant="outlined" className="training-action-card">
+              <Paper
+                variant="outlined"
+                className="record-tab-canvas training-action-card"
+              >
                 <Stack
                   direction="row"
                   spacing={1.3}
@@ -1249,11 +1535,35 @@ function TrainingDetailsDialog({
                       value={signature}
                       onChange={(e) => setSignature(e.target.value)}
                     />
+                    <TextField
+                      sx={{ mt: 2 }}
+                      fullWidth
+                      type="password"
+                      autoComplete="current-password"
+                      label="E-imza parolası"
+                      value={signaturePassword}
+                      onChange={(e) => setSignaturePassword(e.target.value)}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={signatureMeaningAccepted}
+                          onChange={(e) =>
+                            setSignatureMeaningAccepted(e.target.checked)
+                          }
+                        />
+                      }
+                      label="Bu işlemin elektronik imza anlamını kabul ediyorum."
+                    />
                     <Button
                       sx={{ mt: 2 }}
                       variant="contained"
                       disabled={
-                        record.status !== "InProgress" || mutate.isPending
+                        record.status !== "InProgress" ||
+                        mutate.isPending ||
+                        !data.actionableTaskRoles.includes("Learner") ||
+                        !signaturePassword ||
+                        !signatureMeaningAccepted
                       }
                       onClick={() =>
                         mutate.mutate(() =>
@@ -1261,6 +1571,8 @@ function TrainingDetailsDialog({
                             record.id,
                             record.version,
                             signature,
+                            signaturePassword,
+                            signatureMeaningAccepted,
                           ),
                         )
                       }
@@ -1272,7 +1584,7 @@ function TrainingDetailsDialog({
               </Paper>
             )}
             {tab === 2 && (
-              <Stack spacing={2}>
+              <Stack className="record-tab-canvas" spacing={2}>
                 <Paper variant="outlined" className="training-action-card">
                   <Typography variant="h6">
                     Değerlendirme sonucu kaydet
@@ -1281,6 +1593,26 @@ function TrainingDetailsDialog({
                     Sınav puanı ve pratik yeterlilik eğitmen tarafından kanıtla
                     kaydedilir.
                   </Typography>
+                  <TextField
+                    sx={{ mb: 1.5 }}
+                    fullWidth
+                    type="password"
+                    autoComplete="current-password"
+                    label="E-imza parolası"
+                    value={signaturePassword}
+                    onChange={(e) => setSignaturePassword(e.target.value)}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={signatureMeaningAccepted}
+                        onChange={(e) =>
+                          setSignatureMeaningAccepted(e.target.checked)
+                        }
+                      />
+                    }
+                    label="Değerlendirme kaydının elektronik imza anlamını kabul ediyorum."
+                  />
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <TextField
                       type="number"
@@ -1297,7 +1629,11 @@ function TrainingDetailsDialog({
                     <Button
                       variant="contained"
                       disabled={
-                        record.status !== "Assessment" || mutate.isPending
+                        record.status !== "Assessment" ||
+                        mutate.isPending ||
+                        !data.actionableTaskRoles.includes("Trainer") ||
+                        !signaturePassword ||
+                        !signatureMeaningAccepted
                       }
                       onClick={() =>
                         mutate.mutate(() =>
@@ -1307,6 +1643,8 @@ function TrainingDetailsDialog({
                             score,
                             true,
                             evidence,
+                            signaturePassword,
+                            signatureMeaningAccepted,
                           ),
                         )
                       }
@@ -1343,7 +1681,10 @@ function TrainingDetailsDialog({
               </Stack>
             )}
             {tab === 3 && (
-              <Paper variant="outlined" className="qualification-card">
+              <Paper
+                variant="outlined"
+                className="record-tab-canvas qualification-card"
+              >
                 <WorkspacePremiumRounded />
                 <Box>
                   <Typography variant="overline">YETERLİLİK DURUMU</Typography>
@@ -1366,18 +1707,31 @@ function TrainingDetailsDialog({
               </Paper>
             )}
             {tab === 4 && (
-              <AuditTimeline events={data.auditTrail} labels={auditLabels} />
+              <Box className="record-tab-canvas history-tab-panel">
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
+                  Elektronik imzalar ({data.signatures.length})
+                </Typography>
+                {data.signatures.map((x) => (
+                  <Alert key={x.id} severity="success" sx={{ mb: 1 }}>
+                    {x.signerName} · {x.meaning} · {date(x.signedAtUtc)} · v
+                    {x.recordVersion}
+                  </Alert>
+                ))}
+                <AuditTimeline events={data.auditTrail} labels={auditLabels} />
+              </Box>
             )}
           </DialogContent>
           <DialogActions className="record-detail-actions">
             <Button onClick={onClose}>Kapat</Button>
             <Stack direction="row" spacing={1}>
-              {record.status === "Assigned" && (
+              {data.availableTransitions.some((x) => x.code === "start") && (
                 <Button variant="contained" onClick={() => transition("start")}>
                   Eğitimi başlat
                 </Button>
               )}
-              {record.status === "InProgress" && (
+              {data.availableTransitions.some(
+                (x) => x.code === "submit-assessment",
+              ) && (
                 <Button
                   variant="contained"
                   disabled={
@@ -1389,7 +1743,7 @@ function TrainingDetailsDialog({
                   Değerlendirmeye gönder
                 </Button>
               )}
-              {record.status === "TrainerApproval" && (
+              {data.availableTransitions.some((x) => x.code === "approve") && (
                 <>
                   <TextField
                     size="small"
@@ -1397,17 +1751,42 @@ function TrainingDetailsDialog({
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
+                  <TextField
+                    size="small"
+                    type="password"
+                    autoComplete="current-password"
+                    label="E-imza parolası"
+                    value={signaturePassword}
+                    onChange={(e) => setSignaturePassword(e.target.value)}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={signatureMeaningAccepted}
+                        onChange={(e) =>
+                          setSignatureMeaningAccepted(e.target.checked)
+                        }
+                      />
+                    }
+                    label="İmza anlamını kabul ediyorum"
+                  />
                   <Button
                     variant="contained"
                     color="success"
                     startIcon={<VerifiedRounded />}
+                    disabled={
+                      !signaturePassword ||
+                      !signatureMeaningAccepted ||
+                      !note.trim() ||
+                      mutate.isPending
+                    }
                     onClick={() => transition("approve")}
                   >
                     Yeterliliği onayla
                   </Button>
                 </>
               )}
-              {(record.status === "Failed" || record.status === "Expired") && (
+              {data.availableTransitions.some((x) => x.code === "reassign") && (
                 <Button
                   variant="contained"
                   onClick={() => transition("reassign")}
@@ -1415,9 +1794,36 @@ function TrainingDetailsDialog({
                   Yeniden ata
                 </Button>
               )}
+              {data.availableTransitions.some((x) => x.code === "assign") && (
+                <Button
+                  variant="contained"
+                  onClick={() => transition("assign")}
+                >
+                  Çalışana ata
+                </Button>
+              )}
+              {data.availableTransitions.some((x) => x.code === "expire") && (
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  onClick={() => transition("expire")}
+                >
+                  Süresi doldu olarak işaretle
+                </Button>
+              )}
+              {data.availableTransitions.some((x) => x.code === "cancel") && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  disabled={!note.trim()}
+                  onClick={() => transition("cancel")}
+                >
+                  İptal et
+                </Button>
+              )}
             </Stack>
           </DialogActions>
-        </>
+        </Box>
       )}
     </Dialog>
   );

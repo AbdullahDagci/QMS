@@ -12,9 +12,17 @@ import { ComplaintWorkspace } from "./features/complaints/ComplaintWorkspace";
 import { InternalAuditWorkspace } from "./features/internal-audits/InternalAuditWorkspace";
 import { ExternalAuditWorkspace } from "./features/external-audits/ExternalAuditWorkspace";
 import { SupplierAuditWorkspace } from "./features/supplier-audits/SupplierAuditWorkspace";
+import { WorkItemWorkspace } from "./features/work-items/WorkItemWorkspace";
+import { RiskWorkspace } from "./features/risks/RiskWorkspace";
+import { MbrWorkspace } from "./features/mbrs/MbrWorkspace";
+import { SpecializedWorkspace } from "./features/specialized/SpecializedWorkspace";
 import "./App.css";
+import { useAuth } from "./security/AuthContext";
+import { LoginPage } from "./pages/LoginPage";
 
 function App() {
+  const { authenticated } = useAuth();
+  if (!authenticated) return <LoginPage />;
   return (
     <BrowserRouter>
       <Routes>
@@ -29,6 +37,25 @@ function App() {
           <Route path="modules/m07" element={<InternalAuditWorkspace />} />
           <Route path="modules/m08" element={<ExternalAuditWorkspace />} />
           <Route path="modules/m09" element={<SupplierAuditWorkspace />} />
+          <Route path="modules/m10" element={<WorkItemWorkspace />} />
+          <Route path="modules/m11" element={<RiskWorkspace />} />
+          <Route path="modules/m12" element={<MbrWorkspace />} />
+          <Route
+            path="modules/m13"
+            element={<SpecializedWorkspace module="m13" />}
+          />
+          <Route
+            path="modules/m14"
+            element={<SpecializedWorkspace module="m14" />}
+          />
+          <Route
+            path="modules/m15"
+            element={<SpecializedWorkspace module="m15" />}
+          />
+          <Route
+            path="modules/m16"
+            element={<SpecializedWorkspace module="m16" />}
+          />
           <Route
             path="administration/access"
             element={<AccessManagementPage />}

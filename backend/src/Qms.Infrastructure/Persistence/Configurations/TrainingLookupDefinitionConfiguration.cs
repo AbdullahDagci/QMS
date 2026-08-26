@@ -1,0 +1,3 @@
+using Microsoft.EntityFrameworkCore;using Microsoft.EntityFrameworkCore.Metadata.Builders;using Qms.Domain.Trainings;
+namespace Qms.Infrastructure.Persistence.Configurations;
+public sealed class TrainingLookupDefinitionConfiguration:IEntityTypeConfiguration<TrainingLookupDefinition>{public void Configure(EntityTypeBuilder<TrainingLookupDefinition>b){b.ToTable("lookup_definition","training");b.HasKey(x=>x.Id);b.Property(x=>x.Category).HasMaxLength(40).IsRequired();b.Property(x=>x.Code).HasMaxLength(64).IsRequired();b.Property(x=>x.Name).HasMaxLength(120).IsRequired();b.HasIndex(x=>new{x.Category,x.Code}).IsUnique();b.HasIndex(x=>new{x.Category,x.IsActive,x.SortOrder});}}

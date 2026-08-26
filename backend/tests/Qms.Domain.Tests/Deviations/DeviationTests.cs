@@ -52,6 +52,23 @@ public sealed class DeviationTests
     }
 
     [Fact]
+    public void CompletePreliminaryReviewAndStartInvestigation_SkipsRedundantIntermediateAction()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var deviation = CreateDeviation(now, 2, 2, 2);
+        deviation.Submit(1, now.AddMinutes(1));
+
+        deviation.CompletePreliminaryReviewAndStartInvestigation(
+            2,
+            "Ön inceleme tamamlandı; kök neden araştırması gerekli.",
+            now.AddMinutes(2));
+
+        Assert.Equal(DeviationStatus.Investigation, deviation.Status);
+        Assert.Equal("Ön inceleme tamamlandı; kök neden araştırması gerekli.", deviation.PreliminaryReviewNote);
+        Assert.Equal(3, deviation.Version);
+    }
+
+    [Fact]
     public void CreateDraft_WhenOccurrenceIsAfterDetection_RejectsInput()
     {
         var now = DateTimeOffset.UtcNow;
@@ -145,9 +162,42 @@ public sealed class DeviationTests
             isLocked: false,
             BatchDisposition.Pending,
             "Laboratuvar sonucu bekleniyor.",
+            Guid.NewGuid(),
+            "Araştırmacı",
+            "Kalite Güvence",
             DateTimeOffset.UtcNow));
 
         Assert.Contains("kilitli", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BatchImpact_ReleasedBatchCannotRemainLocked() =>
+        Assert.Throws<InvalidOperationException>(() => DeviationBatchImpact.Create(Guid.NewGuid(), "BATCH-REL", true, true, BatchDisposition.Release, "Sonuçlar uygundur.", Guid.NewGuid(), "Değerlendirici", "Kalite Güvence", DateTimeOffset.UtcNow));
+
+    [Fact]
+    public void BatchImpact_UnaffectedBatchCannotBeRejected() =>
+        Assert.Throws<InvalidOperationException>(() => DeviationBatchImpact.Create(Guid.NewGuid(), "BATCH-REJ", false, true, BatchDisposition.Reject, "Red kararı.", Guid.NewGuid(), "Değerlendirici", "Kalite Güvence", DateTimeOffset.UtcNow));
+
+    [Fact]
+    public void Investigation_PreservesActorAndDepartmentSnapshots()
+    {
+        var investigatorId = Guid.NewGuid();
+        var investigation = DeviationInvestigation.CreateCompleted(Guid.NewGuid(), "5 Neden", "Proses", "Kök neden", "Sonuç", investigatorId, "Ayşe Araştırmacı", "Kalite Güvence", DateTimeOffset.UtcNow);
+
+        Assert.Equal(investigatorId, investigation.InvestigatorUserId);
+        Assert.Equal("Ayşe Araştırmacı", investigation.InvestigatorNameSnapshot);
+        Assert.Equal("Kalite Güvence", investigation.InvestigatorDepartmentSnapshot);
+    }
+
+    [Fact]
+    public void BatchImpact_PreservesAssessmentActorSnapshots()
+    {
+        var assessorId = Guid.NewGuid();
+        var impact = DeviationBatchImpact.Create(Guid.NewGuid(), "BATCH-42", true, true, BatchDisposition.Hold, "İnceleme bekleniyor.", assessorId, "Mehmet Değerlendirici", "Üretim", DateTimeOffset.UtcNow);
+
+        Assert.Equal(assessorId, impact.AssessedByUserId);
+        Assert.Equal("Mehmet Değerlendirici", impact.AssessedByNameSnapshot);
+        Assert.Equal("Üretim", impact.AssessedByDepartmentSnapshot);
     }
 
     private static Deviation CreateDeviation(

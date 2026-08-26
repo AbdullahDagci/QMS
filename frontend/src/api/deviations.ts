@@ -17,6 +17,7 @@ export interface DeviationListItem {
   title: string
   detectedDepartment: string
   riskScore: number
+  riskMatrixVersion: string
   classification: 'Minor' | 'Major' | 'Critical'
   capaRequired: boolean
   status: DeviationStatus
@@ -39,6 +40,13 @@ export interface CreateDeviationInput {
   severity: number
   detectability: number
 }
+
+export interface DeviationTypeDefinition { id: string; code: string; name: string; sortOrder: number; isActive: boolean }
+export interface DeviationLookups {
+  departments: Array<{ id: string; code: string; name: string }>
+  deviationTypes: DeviationTypeDefinition[]
+}
+export interface DeviationAssignmentRule { id: string; taskRole: string; assignedUserId: string; assignedUserName: string; detectedDepartment: string | null; deviationType: string | null; minimumRiskScore: number | null; priority: number; isActive: boolean }
 
 export interface DeviationRecord extends DeviationListItem {
   qualityRecordId: string
@@ -69,6 +77,9 @@ export interface DeviationDetails {
     rootCauseCategory: string
     rootCauseDescription: string
     conclusion: string
+    investigatorUserId: string
+    investigatorName: string
+    investigatorDepartment: string
     completedAtUtc: string
   }>
   batchImpacts: Array<{
@@ -78,6 +89,9 @@ export interface DeviationDetails {
     isLocked: boolean
     disposition: string
     rationale: string
+    assessedByUserId: string
+    assessedByName: string
+    assessedByDepartment: string
     assessedAtUtc: string
   }>
   linkedCapas: Array<{
@@ -102,6 +116,9 @@ export interface DeviationDetails {
     label: string
     noteRequired: boolean
   }>
+  signatures: Array<{ id: string; recordVersion: number; signerUserId: string; signerName: string; meaning: string; signedAtUtc: string; contentHash: string; comment: string | null }>
+  canAddInvestigation: boolean
+  canAddBatchImpact: boolean
 }
 
 export interface ColumnFilter {
@@ -152,6 +169,14 @@ export async function createDeviation(input: CreateDeviationInput): Promise<Devi
   })
 }
 
+export const getDeviationLookups = (signal?: AbortSignal): Promise<DeviationLookups> => request('/api/v1/deviations/lookups', { signal })
+export const listDeviationTypes = (signal?: AbortSignal): Promise<DeviationTypeDefinition[]> => request('/api/v1/deviations/types', { signal })
+export const createDeviationType = (input: { code: string; name: string; sortOrder: number }): Promise<DeviationTypeDefinition> => request('/api/v1/deviations/types', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+export const updateDeviationType = (id: string, input: { name: string; sortOrder: number; isActive: boolean }): Promise<DeviationTypeDefinition> => request(`/api/v1/deviations/types/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+export const listDeviationAssignmentRules = (signal?: AbortSignal): Promise<DeviationAssignmentRule[]> => request('/api/v1/deviations/assignment-rules', { signal })
+export const createDeviationAssignmentRule = (input: Omit<DeviationAssignmentRule, 'id' | 'assignedUserName'>): Promise<DeviationAssignmentRule> => request('/api/v1/deviations/assignment-rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+export const updateDeviationAssignmentRule = (id: string, input: Omit<DeviationAssignmentRule, 'id' | 'assignedUserName'>): Promise<DeviationAssignmentRule> => request(`/api/v1/deviations/assignment-rules/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+
 export async function submitDeviation(id: string, expectedVersion: number): Promise<DeviationListItem> {
   return request(`/api/v1/deviations/${id}/submit`, {
     method: 'POST',
@@ -164,6 +189,22 @@ export async function getDeviationDetails(id: string, signal?: AbortSignal): Pro
   return request(`/api/v1/deviations/${id}/details`, { signal })
 }
 
+export async function downloadDeviationFinalReport(id: string): Promise<{ blob: Blob; fileName: string; sha256: string | null }> {
+  const response = await qmsFetch(`/api/v1/deviations/${id}/final-report`)
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as { detail?: string; title?: string } | null
+    throw new Error(problem?.detail ?? problem?.title ?? `PDF indirilemedi (${response.status})`)
+  }
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+  return {
+    blob: await response.blob(),
+    fileName: encoded ? decodeURIComponent(encoded) : plain ?? 'sapma-nihai-kayit.pdf',
+    sha256: response.headers.get('x-document-sha256'),
+  }
+}
+
 export async function transitionDeviation(
   id: string,
   input: {
@@ -172,6 +213,8 @@ export async function transitionDeviation(
     note?: string
     effectivenessRequired?: boolean
     isEffective?: boolean
+    signaturePassword?: string
+    signatureMeaningAccepted?: boolean
   },
 ): Promise<DeviationDetails> {
   return request(`/api/v1/deviations/${id}/transitions`, {

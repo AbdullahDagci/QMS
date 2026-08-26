@@ -22,6 +22,7 @@ public sealed class Complaint
     public bool SampleExpected { get; private set; }
     public bool ReturnExpected { get; private set; }
     public string AttachmentSummary { get; private set; } = string.Empty;
+    public Guid OwnerUserId { get; private set; }
     public string Owner { get; private set; } = string.Empty;
     public DateTimeOffset PreliminaryResponseDueAtUtc { get; private set; }
     public DateTimeOffset FinalResponseDueAtUtc { get; private set; }
@@ -43,31 +44,31 @@ public sealed class Complaint
     public IReadOnlyCollection<ComplaintInvestigation> Investigations => _investigations;
     public IReadOnlyCollection<ComplaintResponse> Responses => _responses;
 
-    public static Complaint Create(Guid qualityRecordId, string channel, string customerName, string country, string product, string? batchNumber, DateTimeOffset eventAt, DateTimeOffset receivedAt, string complaintType, string description, ComplaintSeverity severity, bool healthImpact, bool adverseEvent, bool sampleExpected, bool returnExpected, string attachmentSummary, string owner, DateTimeOffset preliminaryDue, DateTimeOffset finalDue, int similarCount, IEnumerable<string> departments, DateTimeOffset now)
+    public static Complaint Create(Guid qualityRecordId, string channel, string customerName, string country, string product, string? batchNumber, DateTimeOffset eventAt, DateTimeOffset receivedAt, string complaintType, string description, ComplaintSeverity severity, bool healthImpact, bool adverseEvent, bool sampleExpected, bool returnExpected, string attachmentSummary, Guid ownerUserId, string owner, DateTimeOffset preliminaryDue, DateTimeOffset finalDue, int similarCount, IEnumerable<(Guid DepartmentId, string Department, Guid InvestigatorUserId, string Investigator)> investigations, DateTimeOffset now)
     {
         if (qualityRecordId == Guid.Empty) throw new ArgumentException("Kalite kaydı zorunludur.");
-        Text(channel, nameof(channel), 80); Text(customerName, nameof(customerName), 200); Text(country, nameof(country), 100); Text(product, nameof(product), 200); Text(complaintType, nameof(complaintType), 120); Text(description, nameof(description), 6000); Text(owner, nameof(owner), 200);
+        Text(channel, nameof(channel), 80); Text(customerName, nameof(customerName), 200); Text(country, nameof(country), 100); Text(product, nameof(product), 200); Text(complaintType, nameof(complaintType), 120); Text(description, nameof(description), 6000); Text(owner, nameof(owner), 200); if (ownerUserId == Guid.Empty) throw new ArgumentException("Şikâyet sahibi zorunludur.");
         if (eventAt > receivedAt) throw new ArgumentException("Olay tarihi şikâyetin alınma tarihinden sonra olamaz.");
         if (receivedAt > now.AddMinutes(1)) throw new ArgumentException("Alınma tarihi gelecekte olamaz.");
         if (preliminaryDue <= receivedAt || finalDue <= preliminaryDue) throw new ArgumentException("Yanıt hedef tarihleri kronolojik ve gelecekte olmalıdır.");
-        var unique = departments.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var unique = investigations.GroupBy(x => x.DepartmentId).Select(x => x.First()).ToArray();
         if (unique.Length == 0) throw new ArgumentException("En az bir araştırma bölümü seçilmelidir.");
-        var entity = new Complaint { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, Channel = channel.Trim(), CustomerName = customerName.Trim(), Country = country.Trim(), Product = product.Trim(), BatchNumber = string.IsNullOrWhiteSpace(batchNumber) ? null : batchNumber.Trim(), EventAtUtc = eventAt, ReceivedAtUtc = receivedAt, ComplaintType = complaintType.Trim(), Description = description.Trim(), Severity = severity, HasHealthImpact = healthImpact, SuspectedAdverseEvent = adverseEvent, SampleExpected = sampleExpected, ReturnExpected = returnExpected, AttachmentSummary = attachmentSummary?.Trim() ?? string.Empty, Owner = owner.Trim(), PreliminaryResponseDueAtUtc = preliminaryDue, FinalResponseDueAtUtc = finalDue, SimilarComplaintCount = similarCount, TrendFlagged = similarCount >= 2, Status = ComplaintStatus.Received, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
-        foreach (var department in unique) entity._investigations.Add(ComplaintInvestigation.Create(entity.Id, department, "Atama bekliyor"));
+        var entity = new Complaint { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, Channel = channel.Trim(), CustomerName = customerName.Trim(), Country = country.Trim(), Product = product.Trim(), BatchNumber = string.IsNullOrWhiteSpace(batchNumber) ? null : batchNumber.Trim(), EventAtUtc = eventAt, ReceivedAtUtc = receivedAt, ComplaintType = complaintType.Trim(), Description = description.Trim(), Severity = severity, HasHealthImpact = healthImpact, SuspectedAdverseEvent = adverseEvent, SampleExpected = sampleExpected, ReturnExpected = returnExpected, AttachmentSummary = attachmentSummary?.Trim() ?? string.Empty, OwnerUserId = ownerUserId, Owner = owner.Trim(), PreliminaryResponseDueAtUtc = preliminaryDue, FinalResponseDueAtUtc = finalDue, SimilarComplaintCount = similarCount, TrendFlagged = similarCount >= 2, Status = ComplaintStatus.Received, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
+        foreach (var investigation in unique) entity._investigations.Add(ComplaintInvestigation.Create(entity.Id, investigation.DepartmentId, investigation.Department, investigation.InvestigatorUserId, investigation.Investigator));
         return entity;
     }
 
     public void StartTriage(long version, DateTimeOffset now) { Ensure(version, ComplaintStatus.Received); Move(ComplaintStatus.Triage, now); }
     public void CompleteTriage(long version, Guid? deviationId, Guid? pvRecordId, DateTimeOffset now) { Ensure(version, ComplaintStatus.Triage); LinkedDeviationId = deviationId; PharmacovigilanceRecordId = pvRecordId; PharmacovigilanceStatus = pvRecordId.HasValue ? "Transferred" : null; Move(ComplaintStatus.PreliminaryResponse, now); }
-    public ComplaintResponse AddResponse(long version, ComplaintResponseType type, string content, string user, DateTimeOffset now)
+    public ComplaintResponse AddResponse(long version, ComplaintResponseType type, string content, Guid userId, string user, DateTimeOffset now)
     {
         EnsureVersion(version);
         if (type == ComplaintResponseType.Preliminary && Status != ComplaintStatus.PreliminaryResponse) throw new InvalidOperationException("Ön yanıt yalnız ön yanıt aşamasında hazırlanabilir.");
         if (type == ComplaintResponseType.Final && Status != ComplaintStatus.FinalResponseApproval) throw new InvalidOperationException("Nihai yanıt yalnız nihai yanıt onayı aşamasında hazırlanabilir.");
         var next = _responses.Where(x => x.ResponseType == type).Select(x => x.VersionNumber).DefaultIfEmpty(0).Max() + 1;
-        var response = ComplaintResponse.Create(Id, type, next, content, user, now); _responses.Add(response); Touch(now); return response;
+        var response = ComplaintResponse.Create(Id, type, next, content, userId, user, now); _responses.Add(response); Touch(now); return response;
     }
-    public void ApproveResponse(long version, Guid responseId, string user, DateTimeOffset now) { EnsureVersion(version); var response = _responses.SingleOrDefault(x => x.Id == responseId) ?? throw new ArgumentException("Yanıt sürümü bulunamadı."); response.Approve(user, now); Touch(now); }
+    public void ApproveResponse(long version, Guid responseId, Guid userId, string user, DateTimeOffset now) { EnsureVersion(version); var response = _responses.SingleOrDefault(x => x.Id == responseId) ?? throw new ArgumentException("Yanıt sürümü bulunamadı."); response.Approve(userId, user, now); Touch(now); }
     public void StartInvestigation(long version, DateTimeOffset now) { Ensure(version, ComplaintStatus.PreliminaryResponse); if (!_responses.Any(x => x.ResponseType == ComplaintResponseType.Preliminary && x.Status == ComplaintResponseStatus.Approved)) throw new InvalidOperationException("Onaylı ön yanıt olmadan araştırma başlatılamaz."); Move(ComplaintStatus.Investigation, now); }
     public void CompleteInvestigation(long version, Guid investigationId, string findings, string rootCause, DateTimeOffset now) { Ensure(version, ComplaintStatus.Investigation); var item = _investigations.SingleOrDefault(x => x.Id == investigationId) ?? throw new ArgumentException("Araştırma bulunamadı."); item.Complete(findings, rootCause, now); Touch(now); }
     public void FinishInvestigations(long version, DateTimeOffset now) { Ensure(version, ComplaintStatus.Investigation); if (_investigations.Any(x => x.Status != ComplaintInvestigationStatus.Completed)) throw new InvalidOperationException("Tüm paralel araştırmalar tamamlanmadan etki değerlendirmesine geçilemez."); Move(ComplaintStatus.ImpactAssessment, now); }

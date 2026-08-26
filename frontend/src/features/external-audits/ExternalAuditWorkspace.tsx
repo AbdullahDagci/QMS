@@ -12,6 +12,8 @@ import {
   ReportProblemRounded,
   TravelExploreRounded,
   VerifiedRounded,
+  SettingsRounded,
+  DownloadRounded,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -48,6 +50,11 @@ import {
   createExternalAudit,
   exportExternalAuditDocument,
   getExternalAuditDetails,
+  getExternalAuditOptions,
+  getExternalAuditLookupDefinitions,
+  createExternalAuditLookupDefinition,
+  updateExternalAuditLookupDefinition,
+  downloadExternalAuditFinalReport,
   recordExternalAuditClosureLetter,
   respondExternalAuditFinding,
   searchExternalAudits,
@@ -143,6 +150,7 @@ export function ExternalAuditWorkspace() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [createOpen, setCreateOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const { can } = useAuth();
   const columnFilters = useMemo(
     () => toExternalAuditColumnFilters(filters),
@@ -174,7 +182,7 @@ export function ExternalAuditWorkspace() {
     setPage(0);
   };
   return (
-    <Box component="section">
+    <Box component="section" className="module-unified-page">
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -198,6 +206,15 @@ export function ExternalAuditWorkspace() {
         </Box>
         <Stack direction="row" spacing={1.2}>
           <ModuleInfoButton module="M.08" onClick={() => setGuideOpen(true)} />
+          {can(Permissions.administrationManage) && (
+            <Button
+              variant="outlined"
+              startIcon={<SettingsRounded />}
+              onClick={() => setLookupOpen(true)}
+            >
+              M.08 tanımları
+            </Button>
+          )}
           {can(Permissions.externalAuditCreate) && (
             <Button
               variant="contained"
@@ -236,6 +253,7 @@ export function ExternalAuditWorkspace() {
         />
       </Box>
       <Stack
+        className="module-list-toolbar"
         direction="row"
         spacing={1.5}
         sx={{ mt: 2.5, alignItems: "center" }}
@@ -359,6 +377,10 @@ export function ExternalAuditWorkspace() {
         open={guideOpen}
         module="M.08"
         onClose={() => setGuideOpen(false)}
+      />
+      <ExternalAuditLookupDialog
+        open={lookupOpen}
+        onClose={() => setLookupOpen(false)}
       />
     </Box>
   );
@@ -484,6 +506,197 @@ function AuditRow({
     </TableRow>
   );
 }
+function ExternalAuditLookupDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [category, setCategory] = useState("AuditKind");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [sortOrder, setSortOrder] = useState(100);
+  const q = useQuery({
+    queryKey: ["external-audit-lookups"],
+    queryFn: getExternalAuditLookupDefinitions,
+    enabled: open,
+    retry: false,
+  });
+  const refresh = async () => {
+    await qc.invalidateQueries({ queryKey: ["external-audit-lookups"] });
+    await qc.invalidateQueries({ queryKey: ["m08-options"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      createExternalAuditLookupDefinition({ category, code, name, sortOrder }),
+    onSuccess: async () => {
+      setCode("");
+      setName("");
+      await refresh();
+    },
+  });
+  const update = useMutation({
+    mutationFn: (x: {
+      id: string;
+      name: string;
+      sortOrder: number;
+      isActive: boolean;
+    }) => updateExternalAuditLookupDefinition(x.id, x),
+    onSuccess: refresh,
+  });
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+      <ModalHeader onClose={onClose}>
+        <Box>
+          <Typography variant="overline">M.08 · YÖNETİLEN LOOKUP</Typography>
+          <Typography variant="h5">Dış denetim tanımları</Typography>
+          <Typography color="text.secondary">
+            Kod geçmiş kayıtlarda değişmez snapshot olarak korunur; görünen ad
+            ve aktiflik yalnız yeni seçimleri yönetir.
+          </Typography>
+        </Box>
+      </ModalHeader>
+      <DialogContent dividers>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.2}
+          sx={{ mb: 2 }}
+        >
+          <SearchableSelect
+            label="Kategori *"
+            value={category}
+            options={[
+              { value: "AuditKind", label: "Denetim türü" },
+              { value: "Country", label: "Ülke" },
+              { value: "Confidentiality", label: "Gizlilik" },
+            ]}
+            onChange={(v) => setCategory(v ?? "AuditKind")}
+          />
+          <TextField
+            required
+            label="Değişmez kod"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          <TextField
+            required
+            fullWidth
+            label="Görünen ad"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <TextField
+            type="number"
+            label="Sıra"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(Number(e.target.value))}
+            sx={{ width: 100 }}
+          />
+          <Button
+            variant="contained"
+            disabled={!code || !name || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Ekle
+          </Button>
+        </Stack>
+        {(q.isError || create.isError || update.isError) && (
+          <Alert severity="error">
+            {q.error?.message ?? create.error?.message ?? update.error?.message}
+          </Alert>
+        )}
+        <Stack spacing={1}>
+          {q.data?.map((x) => (
+            <ExternalAuditLookupRow
+              key={x.id}
+              item={x}
+              saving={update.isPending}
+              save={(name, order, active) =>
+                update.mutate({
+                  id: x.id,
+                  name,
+                  sortOrder: order,
+                  isActive: active,
+                })
+              }
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
+          Kapat
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+function ExternalAuditLookupRow({
+  item,
+  saving,
+  save,
+}: {
+  item: {
+    category: string;
+    code: string;
+    name: string;
+    sortOrder: number;
+    isActive: boolean;
+  };
+  saving: boolean;
+  save: (name: string, order: number, active: boolean) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [order, setOrder] = useState(item.sortOrder);
+  const [active, setActive] = useState(item.isActive);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.2}
+        sx={{ alignItems: { md: "center" } }}
+      >
+        <Chip size="small" label={item.category} />
+        <Typography sx={{ minWidth: 150, fontFamily: "monospace" }}>
+          {item.code}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          label="Görünen ad"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Sıra"
+          value={order}
+          onChange={(e) => setOrder(Number(e.target.value))}
+          sx={{ width: 90 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+            />
+          }
+          label="Aktif"
+        />
+        <Button
+          variant="outlined"
+          disabled={!name || saving}
+          onClick={() => save(name, order, active)}
+        >
+          Kaydet
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
 function CreateAuditDialog({
   open,
   onClose,
@@ -506,28 +719,38 @@ function CreateAuditDialog({
   );
   const [form, setForm] = useState<CreateExternalAuditInput>({
     title: "",
-    auditKind: "Otorite denetimi",
+    auditKind: "",
     auditorOrganization: "",
     isGovernmentAuthority: true,
-    authorityCountry: "Türkiye",
+    authorityCountry: "",
     officialReference: "",
     scope: "",
-    site: "İstanbul Üretim Tesisi",
+    site: "",
+    ownerUserId: user.id,
     owner: user.displayName,
     notifiedAtUtc: now.toISOString().slice(0, 16),
     plannedStartUtc: start,
     plannedEndUtc: end,
     responseDueAtUtc: due,
-    authorizedCloserUserId: "01991f70-6f40-7000-8000-000000000017",
-    authorizedCloser: "Mesul Müdür",
+    authorizedCloserUserId: null,
+    authorizedCloser: null,
     documentRequests: [],
   });
-  const [documents, setDocuments] = useState(
-    "SOP-QA-001 | Kalite Sistemleri Prosedürü | Kurum İçi\nSOP-URT-014 | Üretim ve Batch Kayıtları Prosedürü | Gizli",
-  );
+  const [manualDocuments, setManualDocuments] = useState<
+    Array<{
+      documentCode: string;
+      title: string;
+      confidentiality: string;
+    }>
+  >([]);
   const [selectedDocuments, setSelectedDocuments] = useState<
     DocumentListItem[]
   >([]);
+  const options = useQuery({
+    queryKey: ["m08-options"],
+    queryFn: ({ signal }) => getExternalAuditOptions(signal),
+    enabled: open,
+  });
   const documentOptions = useQuery({
     queryKey: ["m08-document-options"],
     queryFn: ({ signal }) =>
@@ -558,21 +781,14 @@ function CreateAuditDialog({
     k: K,
     v: CreateExternalAuditInput[K],
   ) => setForm((x) => ({ ...x, [k]: v }));
-  const parsed = documents
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [code, title, confidentiality] = line
-        .split("|")
-        .map((x) => x.trim());
-      return {
-        controlledDocumentId: null,
-        documentCode: code,
-        title: title || code,
-        confidentiality: confidentiality || "Kurum İçi",
-      };
-    });
+  const parsed = manualDocuments
+    .filter((x) => x.documentCode.trim() && x.title.trim() && x.confidentiality)
+    .map((x) => ({
+      controlledDocumentId: null,
+      documentCode: x.documentCode.trim(),
+      title: x.title.trim(),
+      confidentiality: x.confidentiality,
+    }));
   const packageRequests = [
     ...selectedDocuments.map((document) => ({
       controlledDocumentId: document.id,
@@ -592,9 +808,16 @@ function CreateAuditDialog({
     form.auditorOrganization &&
     form.officialReference &&
     form.scope &&
-    form.owner &&
+    form.site &&
+    form.ownerUserId &&
+    form.auditKind &&
+    form.authorityCountry &&
+    form.authorizedCloserUserId &&
+    manualDocuments.every(
+      (x) => x.documentCode.trim() && x.title.trim() && x.confidentiality,
+    ) &&
     packageRequests.length > 0 &&
-    (!form.isGovernmentAuthority || form.authorizedCloserUserId);
+    true;
   return (
     <Dialog
       open={open}
@@ -623,22 +846,25 @@ function CreateAuditDialog({
             <SearchableSelect
               label="Denetim türü"
               value={form.auditKind}
-              options={[
-                "Otorite denetimi",
-                "Müşteri denetimi",
-                "Belgelendirme denetimi",
-              ].map((value) => ({ value, label: value }))}
-              onChange={(v) => set("auditKind", v ?? "Otorite denetimi")}
+              options={(options.data?.auditKinds ?? []).map((x) => ({
+                value: x.code,
+                label: x.name,
+              }))}
+              onChange={(v) => set("auditKind", v ?? "")}
             />
             <TextField
               label="Denetleyen kurum / müşteri"
               value={form.auditorOrganization}
               onChange={(e) => set("auditorOrganization", e.target.value)}
             />
-            <TextField
-              label="Ülke"
+            <SearchableSelect
+              label="Ülke *"
               value={form.authorityCountry}
-              onChange={(e) => set("authorityCountry", e.target.value)}
+              options={(options.data?.countries ?? []).map((x) => ({
+                value: x.code,
+                label: x.name,
+              }))}
+              onChange={(v) => set("authorityCountry", v ?? "")}
             />
             <TextField
               label="Resmi bildirim / referans"
@@ -650,10 +876,18 @@ function CreateAuditDialog({
               value={form.site}
               onChange={(e) => set("site", e.target.value)}
             />
-            <TextField
-              label="Koordinatör"
-              value={form.owner}
-              onChange={(e) => set("owner", e.target.value)}
+            <SearchableSelect
+              label="Koordinatör *"
+              value={form.ownerUserId}
+              options={(options.data?.owners ?? []).map((x) => ({
+                value: x.id,
+                label: x.department ? `${x.name} · ${x.department}` : x.name,
+              }))}
+              onChange={(v) => {
+                const selected = options.data?.owners.find((x) => x.id === v);
+                set("ownerUserId", v ?? "");
+                set("owner", selected?.name ?? "");
+              }}
             />
             <TextField
               type="datetime-local"
@@ -697,34 +931,33 @@ function CreateAuditDialog({
                 checked={form.isGovernmentAuthority}
                 onChange={(e) => {
                   set("isGovernmentAuthority", e.target.checked);
-                  set(
-                    "authorizedCloserUserId",
-                    e.target.checked
-                      ? "01991f70-6f40-7000-8000-000000000017"
-                      : null,
-                  );
-                  set(
-                    "authorizedCloser",
-                    e.target.checked ? "Mesul Müdür" : null,
-                  );
                 }}
               />
             }
             label="Denetleyen taraf devlet kurumu"
           />
-          {form.isGovernmentAuthority && (
+          <Stack spacing={1}>
+            <SearchableSelect
+              label="Bağımsız kapanış yetkilisi *"
+              value={form.authorizedCloserUserId}
+              options={(options.data?.authorizedClosers ?? [])
+                .filter((x) => x.id !== user.id)
+                .map((x) => ({
+                  value: x.id,
+                  label: x.department ? `${x.name} · ${x.department}` : x.name,
+                }))}
+              onChange={(v) => {
+                const selected = options.data?.authorizedClosers.find(
+                  (x) => x.id === v,
+                );
+                set("authorizedCloserUserId", v);
+                set("authorizedCloser", selected?.name ?? null);
+              }}
+            />
             <Alert severity="warning" icon={<AccountBalanceRounded />}>
-              Nihai kapanış Mesul Müdür/atanmış yetkiliye yönlenecektir.
+              Nihai kapanış seçilen bağımsız yetkiliye yönlenecektir.
             </Alert>
-          )}
-          <TextField
-            multiline
-            minRows={4}
-            label="Talep paketi — her satır: Doküman kodu | Başlık | Gizlilik"
-            value={documents}
-            onChange={(e) => setDocuments(e.target.value)}
-            helperText="Dokümanlar M.04 bağlantısıyla ve erişim kanıtıyla kontrollü dışa aktarılır."
-          />
+          </Stack>
           <Autocomplete
             multiple
             options={documentOptions.data?.items ?? []}
@@ -743,6 +976,107 @@ function CreateAuditDialog({
               />
             )}
           />
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1.5}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle2">
+                    Harici talep dokümanları
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    M.04'te bulunmayan dokümanları kontrollü alanlarla ekleyin.
+                  </Typography>
+                </Box>
+                <Button
+                  size="small"
+                  startIcon={<AddRounded />}
+                  onClick={() =>
+                    setManualDocuments((items) => [
+                      ...items,
+                      {
+                        documentCode: "",
+                        title: "",
+                        confidentiality:
+                          options.data?.confidentialities[0]?.code ?? "",
+                      },
+                    ])
+                  }
+                >
+                  Doküman ekle
+                </Button>
+              </Box>
+              {manualDocuments.map((document, index) => (
+                <Box className="form-grid two-column" key={index}>
+                  <TextField
+                    label="Doküman kodu *"
+                    value={document.documentCode}
+                    onChange={(event) =>
+                      setManualDocuments((items) =>
+                        items.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, documentCode: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
+                  <TextField
+                    label="Başlık *"
+                    value={document.title}
+                    onChange={(event) =>
+                      setManualDocuments((items) =>
+                        items.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, title: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
+                  <SearchableSelect
+                    label="Gizlilik *"
+                    value={document.confidentiality}
+                    options={(options.data?.confidentialities ?? []).map(
+                      (item) => ({ value: item.code, label: item.name }),
+                    )}
+                    onChange={(value) =>
+                      setManualDocuments((items) =>
+                        items.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, confidentiality: value ?? "" }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
+                  <Button
+                    color="error"
+                    onClick={() =>
+                      setManualDocuments((items) =>
+                        items.filter((_, itemIndex) => itemIndex !== index),
+                      )
+                    }
+                  >
+                    Kaldır
+                  </Button>
+                </Box>
+              ))}
+              {manualDocuments.length === 0 &&
+                selectedDocuments.length === 0 && (
+                  <Alert severity="info">
+                    Talep paketine M.04'ten veya harici kaynaktan en az bir
+                    doküman ekleyin.
+                  </Alert>
+                )}
+            </Stack>
+          </Paper>
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -823,6 +1157,16 @@ function AuditDetailsDialog({
                 <Typography variant="h4">{r.title}</Typography>
               </Box>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                {r.status === "Closed" && (
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    startIcon={<DownloadRounded />}
+                    onClick={() => downloadExternalAuditFinalReport(r.id)}
+                  >
+                    Nihai PDF
+                  </Button>
+                )}
                 <Chip
                   icon={<GavelRounded />}
                   label={statusLabels[r.status] ?? r.status}
@@ -877,10 +1221,38 @@ function AuditDetailsDialog({
             {tab === 2 && <Findings details={query.data!} update={update} />}{" "}
             {tab === 3 && <Closure details={query.data!} update={update} />}{" "}
             {tab === 4 && (
-              <RecordAssignments
-                aggregateType="ExternalAudit"
-                aggregateId={r.id}
-              />
+              <Stack spacing={2}>
+                <RecordAssignments
+                  aggregateType="ExternalAudit"
+                  aggregateId={r.id}
+                />
+                {query.data!.signatures.length > 0 && (
+                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>
+                      Elektronik imzalar
+                    </Typography>
+                    {query.data!.signatures.map((s) => (
+                      <Box
+                        key={s.id}
+                        sx={{
+                          py: 1,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 700 }}>
+                          {s.signer} · v{s.recordVersion}
+                        </Typography>
+                        <Typography variant="body2">{s.meaning}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {dt(s.signedAtUtc)} · SHA-256{" "}
+                          {s.contentHash.slice(0, 16)}…
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Paper>
+                )}
+              </Stack>
             )}{" "}
             {tab === 5 && (
               <AuditTimeline
@@ -1194,7 +1566,12 @@ function NewFinding({
   const [description, setDescription] = useState("");
   const [reference, setReference] = useState("");
   const [severity, setSeverity] = useState("Minor");
+  const [ownerUserId, setOwnerUserId] = useState("");
   const [owner, setOwner] = useState("");
+  const options = useQuery({
+    queryKey: ["m08-options"],
+    queryFn: ({ signal }) => getExternalAuditOptions(signal),
+  });
   const [capa, setCapa] = useState(false);
   const [due, setDue] = useState(details.record.responseDueAtUtc.slice(0, 16));
   const m = useMutation({
@@ -1205,6 +1582,7 @@ function NewFinding({
         officialReference: reference,
         classification: severity,
         capaRequired: capa,
+        ownerUserId,
         owner,
         responseDueAtUtc: new Date(due).toISOString(),
       }),
@@ -1241,10 +1619,18 @@ function NewFinding({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-        <TextField
-          label="Sorumlu"
-          value={owner}
-          onChange={(e) => setOwner(e.target.value)}
+        <SearchableSelect
+          label="Sorumlu *"
+          value={ownerUserId}
+          options={(options.data?.owners ?? []).map((x) => ({
+            value: x.id,
+            label: x.department ? `${x.name} · ${x.department}` : x.name,
+          }))}
+          onChange={(v) => {
+            const selected = options.data?.owners.find((x) => x.id === v);
+            setOwnerUserId(v ?? "");
+            setOwner(selected?.name ?? "");
+          }}
         />
         <SearchableSelect
           label="Bulgu sınıfı"
@@ -1280,7 +1666,9 @@ function NewFinding({
       <Button
         sx={{ mt: 2 }}
         variant="contained"
-        disabled={!title || !description || !reference || !owner || m.isPending}
+        disabled={
+          !title || !description || !reference || !ownerUserId || m.isPending
+        }
         onClick={() => m.mutate()}
       >
         Resmi bulgu ekle
@@ -1304,6 +1692,8 @@ function FindingCard({
     new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 16),
   );
   const [verification, setVerification] = useState(f.verificationNote ?? "");
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const respond = useMutation({
     mutationFn: () =>
       respondExternalAuditFinding(
@@ -1323,6 +1713,8 @@ function FindingCard({
         f.id,
         details.record.version,
         verification,
+        signaturePassword,
+        signatureAccepted,
       ),
     onSuccess: update,
   });
@@ -1428,10 +1820,30 @@ function FindingCard({
               value={verification}
               onChange={(e) => setVerification(e.target.value)}
             />
+            <TextField
+              type="password"
+              label="E-imza parolası *"
+              value={signaturePassword}
+              onChange={(e) => setSignaturePassword(e.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={signatureAccepted}
+                  onChange={(e) => setSignatureAccepted(e.target.checked)}
+                />
+              }
+              label="Bulgu doğrulama ve kapanışını elektronik olarak imzalıyorum"
+            />
             <Button
               variant="contained"
               color="success"
-              disabled={!verification || close.isPending}
+              disabled={
+                !verification ||
+                !signaturePassword ||
+                !signatureAccepted ||
+                close.isPending
+              }
               onClick={() => close.mutate()}
             >
               Bulguyu doğrula ve kapat
@@ -1458,6 +1870,8 @@ function Closure({
   const [reference, setReference] = useState(r.closureLetterReference ?? "");
   const [evidence, setEvidence] = useState(r.closureEvidence ?? "");
   const [accepted, setAccepted] = useState(r.authorityAccepted ?? false);
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const [received, setReceived] = useState(() =>
     new Date().toISOString().slice(0, 16),
   );
@@ -1470,6 +1884,8 @@ function Closure({
         new Date(received).toISOString(),
         evidence,
         accepted,
+        signaturePassword,
+        signatureAccepted,
       ),
     onSuccess: update,
   });
@@ -1532,9 +1948,31 @@ function Closure({
                 }
                 label="Otorite / müşteri kapanışı kabul etti"
               />
+              <TextField
+                type="password"
+                label="E-imza parolası *"
+                value={signaturePassword}
+                onChange={(e) => setSignaturePassword(e.target.value)}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={signatureAccepted}
+                    onChange={(e) => setSignatureAccepted(e.target.checked)}
+                  />
+                }
+                label="Kapanış mektubu ve kabul kanıtını elektronik olarak imzalıyorum"
+              />
               <Button
                 variant="contained"
-                disabled={!reference || !evidence || !accepted || m.isPending}
+                disabled={
+                  !reference ||
+                  !evidence ||
+                  !accepted ||
+                  !signaturePassword ||
+                  !signatureAccepted ||
+                  m.isPending
+                }
                 onClick={() => m.mutate()}
               >
                 Kapanış kanıtını kaydet
@@ -1560,6 +1998,8 @@ function AuditActions({
 }) {
   const { can } = useAuth();
   const [note, setNote] = useState("");
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const [error, setError] = useState("");
   const m = useMutation({
     mutationFn: (code: string) =>
@@ -1568,6 +2008,8 @@ function AuditActions({
         details.record.version,
         code,
         note,
+        signaturePassword,
+        signatureAccepted,
       ),
     onSuccess: (d) => {
       setError("");
@@ -1649,12 +2091,35 @@ function AuditActions({
           sx={{ minWidth: 320 }}
         />
       )}
+      {details.availableTransitions.some((x) => x.code === "close") && (
+        <Stack sx={{ minWidth: 320 }}>
+          <TextField
+            size="small"
+            type="password"
+            label="E-imza parolası *"
+            value={signaturePassword}
+            onChange={(e) => setSignaturePassword(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={signatureAccepted}
+                onChange={(e) => setSignatureAccepted(e.target.checked)}
+              />
+            }
+            label="Nihai kapanışı elektronik olarak imzalıyorum"
+          />
+        </Stack>
+      )}
       {details.availableTransitions.map((t) => (
         <Button
           key={t.code}
           variant="contained"
           disabled={
-            m.isPending || Boolean(blocker(t.code)) || (t.noteRequired && !note)
+            m.isPending ||
+            Boolean(blocker(t.code)) ||
+            (t.noteRequired && !note) ||
+            (t.code === "close" && (!signaturePassword || !signatureAccepted))
           }
           onClick={() => m.mutate(t.code)}
         >

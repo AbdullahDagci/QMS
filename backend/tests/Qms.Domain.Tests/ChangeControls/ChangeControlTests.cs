@@ -24,11 +24,11 @@ public sealed class ChangeControlTests
     {
         var change = MoveToImplementation("AuthorityApproval");
         var action = Assert.Single(change.Actions);
-        change.RequestActionCompletion(10, action.Id, "Validasyon raporu eklendi.", Now.AddMinutes(10));
-        change.VerifyAction(11, action.Id, true, "Kanıt doğrulandı.", Now.AddMinutes(11));
-        Assert.Throws<InvalidOperationException>(() => change.Transition(12, "request-commissioning", null, true, Now.AddMinutes(12)));
-        change.SetAuthorityApproval(12, "TR-VAR-2026-184.pdf", Now.AddMinutes(12));
-        change.Transition(13, "request-commissioning", null, true, Now.AddMinutes(13));
+        change.RequestActionCompletion(change.Version, action.Id, "Validasyon raporu eklendi.", Now.AddMinutes(10));
+        change.VerifyAction(change.Version, action.Id, true, "Kanıt doğrulandı.", Now.AddMinutes(11));
+        Assert.Throws<InvalidOperationException>(() => change.Transition(change.Version, "request-commissioning", null, true, Now.AddMinutes(12)));
+        change.SetAuthorityApproval(change.Version, "TR-VAR-2026-184.pdf", Now.AddMinutes(12));
+        change.Transition(change.Version, "request-commissioning", null, true, Now.AddMinutes(13));
         Assert.Equal(ChangeControlStatus.CommissioningApproval, change.Status);
     }
 
@@ -37,15 +37,15 @@ public sealed class ChangeControlTests
     {
         var change = MoveToImplementation("None");
         var action = Assert.Single(change.Actions);
-        change.RequestActionCompletion(9, action.Id, "Uygulama kanıtı", Now.AddMinutes(9));
-        change.VerifyAction(10, action.Id, true, "Doğrulandı", Now.AddMinutes(10));
-        change.Transition(11, "request-commissioning", null, true, Now.AddMinutes(11));
-        change.Transition(12, "commission", "Devreye alma kontrolleri uygun.", true, Now.AddMinutes(12));
+        change.RequestActionCompletion(change.Version, action.Id, "Uygulama kanıtı", Now.AddMinutes(9));
+        change.VerifyAction(change.Version, action.Id, true, "Doğrulandı", Now.AddMinutes(10));
+        change.Transition(change.Version, "request-commissioning", null, true, Now.AddMinutes(11));
+        change.Transition(change.Version, "commission", "Devreye alma kontrolleri uygun.", true, Now.AddMinutes(12));
         Assert.Equal(ChangeControlStatus.PostImplementationVerification, change.Status);
         Assert.NotNull(change.CommissionedAtUtc);
         Assert.Null(change.ClosedAtUtc);
-        change.Transition(13, "verify-implementation", "İzleme başarılı.", true, Now.AddDays(2));
-        change.Transition(14, "close", "Tüm bağımlılıklar kapandı.", true, Now.AddDays(2).AddMinutes(1));
+        change.Transition(change.Version, "verify-implementation", "İzleme başarılı.", true, Now.AddDays(2));
+        change.Transition(change.Version, "close", "Tüm bağımlılıklar kapandı.", true, Now.AddDays(2).AddMinutes(1));
         Assert.Equal(ChangeControlStatus.Closed, change.Status);
     }
 
@@ -61,11 +61,11 @@ public sealed class ChangeControlTests
         }
         change.Transition(version++, "submit-board", null, true, Now.AddMinutes(version));
         change.Transition(version++, "approve-board", "Kurul onayı", true, Now.AddMinutes(version));
-        change.AddAction(version++, "Validasyon", "Hat uygunluk testini tamamla", "Validasyon Ekibi", Now.AddDays(10), true, Now.AddMinutes(version));
+        change.AddAction(version++, "Validasyon", "Hat uygunluk testini tamamla", Guid.NewGuid(), "Validasyon Ekibi", Now.AddDays(10), true, Now.AddMinutes(version));
         change.Transition(version, "approve-plan", "Plan uygun", true, Now.AddMinutes(version));
         return change;
     }
 
     private static ChangeControl Create(string regulatoryImpact) => ChangeControl.Create(
-        Guid.NewGuid(), Guid.NewGuid(), "Proses", "Dolum sıcaklık alarmı değişikliği", "Alarm 28°C", "Alarm 25°C", "Sapma tekrarını önlemek", "Dolum hattı ve ilgili SOP", false, null, "Kalite Güvence", Now.AddDays(30), "Yüksek", "Ürün kalitesi etkilenebilir.", true, false, true, regulatoryImpact, "Önceki PLC reçetesini geri yükle", ["Üretim"], Now);
+        Guid.NewGuid(), Guid.NewGuid(), "Proses", "Dolum sıcaklık alarmı değişikliği", "Alarm 28°C", "Alarm 25°C", "Sapma tekrarını önlemek", "Dolum hattı ve ilgili SOP", false, null, Guid.NewGuid(), "Kalite Güvence", Now.AddDays(30), "Yüksek", "Ürün kalitesi etkilenebilir.", true, false, true, regulatoryImpact, "Önceki PLC reçetesini geri yükle", [(Guid.NewGuid(), "Üretim", Guid.NewGuid(), "Üretim değerlendiricisi"), (Guid.NewGuid(), "Kalite Güvence", Guid.NewGuid(), "KG değerlendiricisi")], Now);
 }

@@ -53,13 +53,14 @@ describe('App', () => {
             expectedState: '25°C altında olmalı.', immediateAction: 'Hat durduruldu.', deviationType: 'Proses',
             detectedDepartment: 'Üretim', processStage: 'Dolum', occurredAtUtc: now, detectedAtUtc: now,
             targetDateUtc: now, likelihood: 3, severity: 3, detectability: 3, riskScore: 27,
+            riskMatrixVersion: 'M01-RISK-1.0',
             classification: 'Major', capaRequired: true, status: 'Submitted', preliminaryReviewNote: null,
             qualityAssessmentNote: null, effectivenessRequired: false, effectivenessAssessmentNote: null,
             closureJustification: null, closedAtUtc: null, createdAtUtc: now, updatedAtUtc: now, version: 2,
           },
-          investigations: [], batchImpacts: [],
+          investigations: [], batchImpacts: [], linkedCapas: [], signatures: [], canAddInvestigation: false, canAddBatchImpact: false,
           auditTrail: [{ id: '1', version: 2, eventType: 'DeviationSubmitted', actor: 'KG', occurredAtUtc: now, reason: null }],
-          availableTransitions: [{ code: 'start-preliminary-review', label: 'Ön incelemeyi başlat', noteRequired: true }],
+          availableTransitions: [{ code: 'start-preliminary-review', label: 'Ön incelemeyi tamamla ve araştırmaya gönder', noteRequired: true }],
         })
       }
       return new Response(null, { status: 404 })
@@ -68,11 +69,16 @@ describe('App', () => {
     render(<QueryClientProvider client={queryClient}><App /></QueryClientProvider>)
 
     await userEvent.click(screen.getAllByRole('link', { name: /Sapma Yönetimi/ })[0])
-    await userEvent.click(await screen.findByRole('button', { name: 'Aç' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'İşlemler' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Aç/ }))
 
     expect(await screen.findByRole('button', { name: 'Sapma ayrıntısını kapat' })).toBeInTheDocument()
-    expect(screen.getByRole('tablist', { name: 'Sapma detay bölümleri' })).toBeInTheDocument()
-    expect(screen.getByText('Kontrollü iş akışı')).toBeInTheDocument()
+    expect(await screen.findByRole('tablist', { name: 'Sapma detay bölümleri' })).toBeInTheDocument()
+    expect(screen.getByText('Süreç durumu')).toBeInTheDocument()
+    expect(screen.getByText('Kayıt bağlamı')).toBeInTheDocument()
+    expect(screen.getByText('Tespit eden bölüm')).toBeInTheDocument()
+    expect(screen.getByText('Proses aşaması')).toBeInTheDocument()
+    expect(screen.getByText('Gerçekleşme zamanı')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: /Karar ve Aksiyon/ }))
     expect(await screen.findByText('Sıradaki kontrollü adım')).toBeInTheDocument()
@@ -91,5 +97,28 @@ describe('App', () => {
 
     expect(await screen.findByLabelText('Liste yükleniyor')).toBeInTheDocument()
     expect(screen.getByLabelText('Uygulama verileri yükleniyor')).toBeInTheDocument()
+  })
+
+  it('confirms a draft row action and shows result feedback', async () => {
+    const now = new Date().toISOString()
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString()
+      if (url.endsWith('/api/v1/deviations/search')) return Response.json({ items: [{
+        id: 'draft-1', recordNumber: 'SP-2026-000099', title: 'Onay testi', detectedDepartment: 'Üretim',
+        riskScore: 8, classification: 'Minor', capaRequired: false, status: 'Draft', targetDateUtc: now,
+        createdAtUtc: now, version: 1,
+      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 })
+      if (url.endsWith('/api/v1/deviations/draft-1/submit')) return Response.json({ id: 'draft-1' })
+      return new Response(null, { status: 404 })
+    }))
+    window.history.pushState({}, '', '/modules/deviations')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><App /></QueryClientProvider>)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'İşlemler' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /İş akışına gönder/ }))
+    expect(screen.getByRole('heading', { name: 'İş akışına gönderilsin mi?' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Onayla ve gönder' }))
+    expect(await screen.findByText('SP-2026-000099 kontrollü iş akışına gönderildi.')).toBeInTheDocument()
   })
 })

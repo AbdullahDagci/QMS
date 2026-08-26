@@ -2,8 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   Paper,
   Skeleton,
@@ -19,6 +17,8 @@ import {
 import {
   ArrowForwardRounded,
   AssignmentLateRounded,
+  BarChartRounded,
+  DonutLargeRounded,
   FactCheckRounded,
   GppMaybeRounded,
   Inventory2Rounded,
@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
+import type { CSSProperties } from 'react'
 import { getDashboardSummary, type DashboardDeviation } from '../api/dashboard'
 
 const statusLabels: Record<string, string> = {
@@ -52,14 +53,30 @@ export function DashboardPage() {
     retry: false,
   })
 
+  const total = summary.data?.totalDeviations ?? 0
+  const open = summary.data?.openDeviations ?? 0
+  const closed = Math.max(0, total - open)
+  const operationalBars = [
+    { label: 'Açık kayıt', value: open, tone: 'teal' },
+    { label: 'Majör / kritik', value: summary.data?.majorOrCriticalDeviations ?? 0, tone: 'amber' },
+    { label: 'Termin gecikmiş', value: summary.data?.overdueDeviations ?? 0, tone: 'rose' },
+    { label: 'DÖF gerekli', value: summary.data?.capaRequiredDeviations ?? 0, tone: 'blue' },
+  ]
+  const recent = summary.data?.recentDeviations ?? []
+  const riskDistribution = [
+    { label: 'Minör', value: recent.filter((item) => item.classification === 'Minor').length, tone: 'minor' },
+    { label: 'Majör', value: recent.filter((item) => item.classification === 'Major').length, tone: 'major' },
+    { label: 'Kritik', value: recent.filter((item) => item.classification === 'Critical').length, tone: 'critical' },
+  ]
+
   return (
-    <Stack spacing={3.5}>
-      <Box className="dashboard-heading">
+    <Stack spacing={2.5} className="dashboard-command-center">
+      <Box className="dashboard-heading dashboard-command-hero">
         <Box>
-          <Typography className="page-eyebrow">OPERASYONEL GÖRÜNÜM</Typography>
+          <Typography className="page-eyebrow">CANLI KALİTE OPERASYONU</Typography>
           <Typography variant="h3">Kalite kontrol merkezi</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-            Açık kayıtları, riskleri ve bağlı kalite zincirini tek ekrandan izleyin.
+          <Typography sx={{ mt: 1 }}>
+            Risk sinyallerini, açık iş yükünü ve kapanış performansını tek bakışta yönetin.
           </Typography>
         </Box>
         <Button component={Link} to="/modules/deviations" variant="contained" endIcon={<ArrowForwardRounded />}>
@@ -71,7 +88,7 @@ export function DashboardPage() {
         <Alert severity="warning">Dashboard verileri alınamadı. API bağlantısını kontrol edin.</Alert>
       )}
 
-      <Box className="metric-grid">
+      <Box className="metric-grid dashboard-metric-strip">
         <MetricCard label="Toplam sapma" value={summary.data?.totalDeviations} loading={summary.isLoading} icon={Inventory2Rounded} tone="indigo" />
         <MetricCard label="Açık kayıt" value={summary.data?.openDeviations} loading={summary.isLoading} icon={AssignmentLateRounded} tone="cyan" />
         <MetricCard label="Majör / kritik" value={summary.data?.majorOrCriticalDeviations} loading={summary.isLoading} icon={GppMaybeRounded} tone="amber" />
@@ -79,7 +96,18 @@ export function DashboardPage() {
         <MetricCard label="DÖF gerekli" value={summary.data?.capaRequiredDeviations} loading={summary.isLoading} icon={TaskAltRounded} tone="green" />
       </Box>
 
-      <Box className="dashboard-main-grid">
+      <Box className="dashboard-analytics-grid">
+        <Paper className="dashboard-panel operational-chart-panel" elevation={0}>
+          <PanelHeading icon={BarChartRounded} eyebrow="OPERASYON YÜKÜ" title="Açık işlerin dağılımı" description="Toplam sapma hacmine göre güncel operasyon göstergeleri" />
+          {summary.isLoading ? <Skeleton variant="rounded" height={210} /> : <OperationalBarChart rows={operationalBars} total={total} />}
+        </Paper>
+        <Paper className="dashboard-panel closure-chart-panel" elevation={0}>
+          <PanelHeading icon={DonutLargeRounded} eyebrow="KAPANIŞ DURUMU" title="Portföy dengesi" description="Açık ve sonuçlandırılmış sapmalar" />
+          {summary.isLoading ? <Skeleton variant="circular" width={180} height={180} /> : <ClosureDonut open={open} closed={closed} />}
+        </Paper>
+      </Box>
+
+      <Box className="dashboard-lower-grid">
         <Paper className="dashboard-panel recent-records-panel" elevation={0}>
           <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box>
@@ -91,14 +119,9 @@ export function DashboardPage() {
           <RecentDeviations loading={summary.isLoading} records={summary.data?.recentDeviations ?? []} />
         </Paper>
 
-        <Paper className="dashboard-panel attention-panel" elevation={0}>
-          <Typography variant="h6" sx={{ fontWeight: 750 }}>Dikkat gerektirenler</Typography>
-          <Typography variant="body2" color="text.secondary">Önceliklendirme özeti</Typography>
-          <Stack spacing={1.5} sx={{ mt: 2.5 }}>
-            <AttentionRow label="Termin gecikmiş kayıt" value={summary.data?.overdueDeviations} tone="error" loading={summary.isLoading} />
-            <AttentionRow label="Yüksek riskli açık kayıt" value={summary.data?.majorOrCriticalDeviations} tone="warning" loading={summary.isLoading} />
-            <AttentionRow label="DÖF bağlantısı bekleyen" value={summary.data?.capaRequiredDeviations} tone="primary" loading={summary.isLoading} />
-          </Stack>
+        <Paper className="dashboard-panel risk-chart-panel" elevation={0}>
+          <PanelHeading icon={GppMaybeRounded} eyebrow="RİSK PROFİLİ" title="Son kayıtların dağılımı" description="En yeni sapmalardaki sınıflandırma yoğunluğu" />
+          {summary.isLoading ? <Skeleton variant="rounded" height={170} /> : <RiskBars rows={riskDistribution} />}
         </Paper>
       </Box>
 
@@ -137,28 +160,56 @@ function MetricCard({ label, value, loading, icon: Icon, tone }: {
   tone: string
 }) {
   return (
-    <Card className="metric-card">
-      <CardContent>
+    <Paper className="metric-card" elevation={0}>
+      <Box className="metric-card-content">
         <Box className={`metric-icon tone-${tone}`}><Icon /></Box>
         {loading ? <Skeleton width={58} height={46} /> : <Typography className="metric-value">{value ?? 0}</Typography>}
         <Typography variant="body2" color="text.secondary">{label}</Typography>
-      </CardContent>
-    </Card>
+      </Box>
+    </Paper>
   )
 }
 
-function AttentionRow({ label, value, tone, loading }: {
-  label: string
-  value?: number
-  tone: 'error' | 'warning' | 'primary'
-  loading: boolean
-}) {
+function PanelHeading({ icon: Icon, eyebrow, title, description }: { icon: typeof Inventory2Rounded; eyebrow: string; title: string; description: string }) {
   return (
-    <Box className="attention-row">
-      <Typography variant="body2">{label}</Typography>
-      {loading ? <Skeleton width={28} /> : <Chip color={tone} size="small" label={value ?? 0} />}
-    </Box>
+    <Stack direction="row" spacing={1.4} className="dashboard-panel-heading">
+      <Box className="dashboard-panel-icon"><Icon /></Box>
+      <Box><Typography variant="overline">{eyebrow}</Typography><Typography variant="h6">{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Box>
+    </Stack>
   )
+}
+
+function OperationalBarChart({ rows, total }: { rows: Array<{ label: string; value: number; tone: string }>; total: number }) {
+  const scale = Math.max(total, ...rows.map((row) => row.value), 1)
+  return <Box className="operational-bars" role="img" aria-label="Operasyon yükü çubuk grafiği">
+    {rows.map((row) => <Box className="operational-bar-row" key={row.label}>
+      <Stack direction="row" className="operational-bar-label"><Typography>{row.label}</Typography><Typography>{row.value}</Typography></Stack>
+      <Box className="operational-bar-track"><Box className={`operational-bar-fill tone-${row.tone}`} sx={{ width: `${Math.max(row.value ? 6 : 0, row.value / scale * 100)}%` }} /></Box>
+    </Box>)}
+    <Stack direction="row" className="chart-axis"><span>0</span><span>{Math.round(scale / 2)}</span><span>{scale}</span></Stack>
+  </Box>
+}
+
+function ClosureDonut({ open, closed }: { open: number; closed: number }) {
+  const total = open + closed
+  const openPercent = total ? Math.round(open / total * 100) : 0
+  return <Box className="closure-donut-layout">
+    <Box className="closure-donut" role="img" aria-label={`Açık kayıt oranı yüzde ${openPercent}`} sx={{ '--open-angle': `${openPercent * 3.6}deg` } as CSSProperties}>
+      <Box><Typography>{openPercent}%</Typography><Typography variant="caption">açık</Typography></Box>
+    </Box>
+    <Box className="donut-legend"><span><i className="is-open" />Açık <strong>{open}</strong></span><span><i className="is-closed" />Kapalı <strong>{closed}</strong></span></Box>
+  </Box>
+}
+
+function RiskBars({ rows }: { rows: Array<{ label: string; value: number; tone: string }> }) {
+  const max = Math.max(...rows.map((row) => row.value), 1)
+  return <Box className="risk-bars" role="img" aria-label="Son kayıtların risk dağılımı">
+    {rows.map((row) => <Box className="risk-bar-column" key={row.label}>
+      <Typography className="risk-bar-value">{row.value}</Typography>
+      <Box className="risk-bar-track"><Box className={`risk-bar-fill tone-${row.tone}`} sx={{ height: `${Math.max(row.value ? 12 : 3, row.value / max * 100)}%` }} /></Box>
+      <Typography variant="caption">{row.label}</Typography>
+    </Box>)}
+  </Box>
 }
 
 function RecentDeviations({ loading, records }: { loading: boolean; records: DashboardDeviation[] }) {

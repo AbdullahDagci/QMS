@@ -237,6 +237,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("EffectivenessEvaluatorUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("EffectivenessMethod")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -269,6 +272,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("QualityRecordId")
                         .HasColumnType("uuid");
@@ -312,6 +318,10 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EffectivenessEvaluatorUserId");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
@@ -359,6 +369,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -375,6 +388,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("CapaId", "TargetDateUtc");
 
@@ -398,6 +413,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ImpactSummary")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -411,12 +429,19 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("ReviewerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("ReviewerUserId");
 
                     b.HasIndex("ChangeControlId", "Department")
                         .IsUnique();
@@ -469,6 +494,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("PostImplementationResult")
                         .HasMaxLength(3000)
@@ -544,6 +572,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
 
@@ -588,6 +618,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -605,9 +638,54 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.HasIndex("ChangeControlId", "Status");
 
                     b.ToTable("implementation_action", "change_control");
+                });
+
+            modelBuilder.Entity("Qms.Domain.ChangeControls.ChangeLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("Category", "IsActive", "SortOrder");
+
+                    b.ToTable("change_lookup_definition", "quality");
                 });
 
             modelBuilder.Entity("Qms.Domain.Complaints.Complaint", b =>
@@ -691,6 +769,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("PharmacovigilanceRecordId")
                         .HasColumnType("uuid");
 
@@ -750,6 +831,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("LinkedDeviationId");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
 
@@ -777,6 +860,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Findings")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
@@ -785,6 +871,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("InvestigatorUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RootCauseContribution")
                         .HasMaxLength(2000)
@@ -797,10 +886,57 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ComplaintId", "Department")
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("InvestigatorUserId");
+
+                    b.HasIndex("ComplaintId", "DepartmentId")
                         .IsUnique();
 
                     b.ToTable("investigation", "complaint");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Complaints.ComplaintLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("Category", "IsActive", "SortOrder");
+
+                    b.ToTable("lookup_definition", "complaint");
                 });
 
             modelBuilder.Entity("Qms.Domain.Complaints.ComplaintResponse", b =>
@@ -815,6 +951,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Property<string>("ApprovedBy")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("ComplaintId")
                         .HasColumnType("uuid");
@@ -832,6 +971,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("PreparedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ResponseType")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -846,6 +988,10 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ApprovedByUserId");
+
+                    b.HasIndex("PreparedByUserId");
 
                     b.HasIndex("ComplaintId", "ResponseType", "VersionNumber")
                         .IsUnique();
@@ -937,6 +1083,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("QualityRecordId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("RiskMatrixVersion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<int>("RiskScore")
                         .HasColumnType("integer");
 
@@ -975,6 +1126,46 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.ToTable("deviation", "deviation");
                 });
 
+            modelBuilder.Entity("Qms.Domain.Deviations.DeviationAssignmentRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssignedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DetectedDepartment")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("DeviationType")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MinimumRiskScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TaskRole")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedUserId");
+
+                    b.HasIndex("TaskRole", "IsActive", "Priority");
+
+                    b.ToTable("assignment_rule", "deviation");
+                });
+
             modelBuilder.Entity("Qms.Domain.Deviations.DeviationBatchImpact", b =>
                 {
                     b.Property<Guid>("Id")
@@ -983,6 +1174,19 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("AssessedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AssessedByDepartmentSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("AssessedByNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("AssessedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("BatchNumber")
                         .IsRequired()
@@ -1010,10 +1214,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DeviationId", "BatchNumber")
-                        .IsUnique();
-
                     b.HasIndex("Disposition", "IsLocked");
+
+                    b.HasIndex("DeviationId", "BatchNumber", "AssessedAtUtc");
 
                     b.ToTable("deviation_batch_impact", "deviation");
                 });
@@ -1034,6 +1237,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("DeviationId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("InvestigatorDepartmentSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("InvestigatorNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("InvestigatorUserId")
                         .HasColumnType("uuid");
@@ -1058,6 +1271,47 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("DeviationId", "CompletedAtUtc");
 
                     b.ToTable("deviation_investigation", "deviation");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Deviations.DeviationTypeDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "SortOrder");
+
+                    b.ToTable("deviation_type_definition", "quality");
                 });
 
             modelBuilder.Entity("Qms.Domain.Documents.ControlledDocument", b =>
@@ -1085,6 +1339,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("DocumentCode")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -1102,6 +1359,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("PlannedEffectiveDateUtc")
                         .HasColumnType("timestamp with time zone");
@@ -1138,8 +1398,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("DocumentCode")
                         .IsUnique();
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
@@ -1203,6 +1467,52 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.ToTable("controlled_copy", "document");
                 });
 
+            modelBuilder.Entity("Qms.Domain.Documents.DocumentLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition1");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code1");
+
+                    b.HasIndex("Category", "IsActive", "SortOrder")
+                        .HasDatabaseName("IX_lookup_definition_Category_IsActive_SortOrder1");
+
+                    b.ToTable("lookup_definition", "document");
+                });
+
             modelBuilder.Entity("Qms.Domain.Documents.DocumentReadReceipt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1262,10 +1572,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Reviewer")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("ReviewerUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("RevisionId")
                         .HasColumnType("uuid");
@@ -1278,6 +1594,10 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ControlledDocumentId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("ReviewerUserId");
 
                     b.HasIndex("RevisionId", "Department")
                         .IsUnique();
@@ -1363,6 +1683,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("PositionId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("RevisionId")
                         .HasColumnType("uuid");
 
@@ -1374,6 +1697,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ControlledDocumentId");
+
+                    b.HasIndex("PositionId");
 
                     b.HasIndex("RevisionId", "Position")
                         .IsUnique();
@@ -1495,6 +1820,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("PlannedEndUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -1535,6 +1863,10 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AuthorizedCloserUserId");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
@@ -1648,6 +1980,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("ResponseDueAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -1674,7 +2009,55 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("Number")
                         .IsUnique();
 
+                    b.HasIndex("OwnerUserId");
+
                     b.ToTable("finding", "external_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.ExternalAudits.ExternalAuditLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition2");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code2");
+
+                    b.HasIndex("Category", "IsActive", "SortOrder")
+                        .HasDatabaseName("IX_lookup_definition_Category_IsActive_SortOrder2");
+
+                    b.ToTable("lookup_definition", "external_audit");
                 });
 
             modelBuilder.Entity("Qms.Domain.ExternalAudits.ExternalAuditPackageAccess", b =>
@@ -1725,6 +2108,39 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("ExternalAuditId", "AccessedAtUtc");
 
                     b.ToTable("package_access", "external_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Identity.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ExpiresAtUtc");
+
+                    b.ToTable("user_session", "identity");
                 });
 
             modelBuilder.Entity("Qms.Domain.InternalAudits.AuditChecklistItem", b =>
@@ -1824,6 +2240,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("RequirementReference")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -1865,6 +2284,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_finding_Number1");
 
+                    b.HasIndex("OwnerUserId")
+                        .HasDatabaseName("IX_finding_OwnerUserId1");
+
                     b.ToTable("finding", "internal_audit");
                 });
 
@@ -1883,6 +2305,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("AuditeeDepartmentId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ChecklistLockedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -1971,12 +2396,349 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AuditeeDepartmentId");
+
+                    b.HasIndex("LeadAuditorUserId");
+
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
 
                     b.HasIndex("PlanYear", "Status");
 
                     b.ToTable("internal_audit", "internal_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.InternalAudits.InternalAuditLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition3");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code3");
+
+                    b.HasIndex("Category", "IsActive", "SortOrder")
+                        .HasDatabaseName("IX_lookup_definition_Category_IsActive_SortOrder3");
+
+                    b.ToTable("lookup_definition", "internal_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MasterBatchRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Approver")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ApproverUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Author")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("BatchSize")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<string>("BatchUnitCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("BatchUnitName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("ChangeReason")
+                        .IsRequired()
+                        .HasMaxLength(3000)
+                        .HasColumnType("character varying(3000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("DosageFormCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("DosageFormName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset?>("EffectiveAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LineCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("LineName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid?>("PreviousVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProductCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reviewer")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ReviewerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SiteCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SiteName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Strength")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("AuthorUserId");
+
+                    b.HasIndex("PreviousVersionId");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("ReviewerUserId");
+
+                    b.HasIndex("ProductCode", "SiteCode", "Status");
+
+                    b.ToTable("master_batch_record", "mbr");
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MasterBatchStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Instruction")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<bool>("IsCritical")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("LowerLimit")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<Guid>("MasterBatchRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MaterialOrEquipmentReference")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Parameter")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("PhaseCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("PhaseName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("UnitCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("UnitName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<decimal?>("UpperLimit")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MasterBatchRecordId", "Order")
+                        .IsUnique();
+
+                    b.ToTable("step", "mbr");
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MbrLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition4");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code4");
+
+                    b.ToTable("lookup_definition", "mbr");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Notifications.UserNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("ReadAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ReadAtUtc", "CreatedAtUtc");
+
+                    b.ToTable("user_notification", "notification");
                 });
 
             modelBuilder.Entity("Qms.Domain.Organization.Delegation", b =>
@@ -2208,6 +2970,396 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.ToTable("quality_record", "core");
                 });
 
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskAssessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActionThreshold")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Approver")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ApproverUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MatrixVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Methodology")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("OwnerDepartment")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("OwnerDepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Process")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.ToTable("risk_assessment", "risk_management");
+                });
+
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .HasMaxLength(3000)
+                        .HasColumnType("character varying(3000)");
+
+                    b.Property<DateTimeOffset?>("ActionDueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ActionEvidence")
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<string>("ActionOwner")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ActionOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Cause")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Detectability")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Effect")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ExistingControls")
+                        .IsRequired()
+                        .HasMaxLength(3000)
+                        .HasColumnType("character varying(3000)");
+
+                    b.Property<string>("FailureMode")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Occurrence")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ResidualDetectability")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ResidualOccurrence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResidualRationale")
+                        .HasMaxLength(3000)
+                        .HasColumnType("character varying(3000)");
+
+                    b.Property<int?>("ResidualSeverity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RiskAssessmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActionOwnerUserId");
+
+                    b.HasIndex("RiskAssessmentId");
+
+                    b.ToTable("risk_item", "risk_management");
+                });
+
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition5");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code5");
+
+                    b.ToTable("lookup_definition", "risk_management");
+                });
+
+            modelBuilder.Entity("Qms.Domain.SpecializedRecords.SpecializedLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition6");
+
+                    b.HasIndex("ModuleCode", "Category", "Code")
+                        .IsUnique();
+
+                    b.ToTable("lookup_definition", "specialized");
+                });
+
+            modelBuilder.Entity("Qms.Domain.SpecializedRecords.SpecializedRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Approver")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ApproverUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<DateTimeOffset>("DueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Reviewer")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ReviewerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScopeCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ScopeName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("StructuredDataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SubjectCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SubjectName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("TypeCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("TypeName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("ReviewerUserId");
+
+                    b.HasIndex("ModuleCode", "Status", "DueAtUtc");
+
+                    b.ToTable("record", "specialized");
+                });
+
             modelBuilder.Entity("Qms.Domain.SupplierAudits.SupplierAudit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2274,6 +3426,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("PurchasingOwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("QualificationStatus")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2281,6 +3436,14 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("QualificationValidUntilUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("QualityApprover")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("QualityApproverUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("QualityRecordId")
                         .HasColumnType("uuid");
@@ -2339,14 +3502,30 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Verifier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("VerifierUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LeadAuditorUserId");
+
+                    b.HasIndex("PurchasingOwnerUserId");
+
+                    b.HasIndex("QualityApproverUserId");
+
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
+
+                    b.HasIndex("VerifierUserId");
 
                     b.HasIndex("RiskBand", "Status");
 
@@ -2456,6 +3635,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("RequirementReference")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -2494,6 +3676,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("Number")
                         .IsUnique()
                         .HasDatabaseName("IX_finding_Number2");
+
+                    b.HasIndex("OwnerUserId")
+                        .HasDatabaseName("IX_finding_OwnerUserId2");
 
                     b.HasIndex("SupplierAuditId");
 
@@ -2536,6 +3721,52 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("SupplierAuditId", "ExpiresAtUtc");
 
                     b.ToTable("invitation", "supplier_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.SupplierAudits.SupplierAuditLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition7");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code6");
+
+                    b.HasIndex("Category", "IsActive", "SortOrder")
+                        .HasDatabaseName("IX_lookup_definition_Category_IsActive_SortOrder4");
+
+                    b.ToTable("lookup_definition", "supplier_audit");
                 });
 
             modelBuilder.Entity("Qms.Domain.Trainings.TrainingAssessmentAttempt", b =>
@@ -2664,6 +3895,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid>("PositionId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("ProgressPercent")
                         .HasColumnType("integer");
 
@@ -2709,12 +3943,60 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("MatrixRuleId");
 
+                    b.HasIndex("PositionId");
+
                     b.HasIndex("QualityRecordId")
                         .IsUnique();
 
                     b.HasIndex("EmployeeUserId", "Status", "DueAtUtc");
 
                     b.ToTable("assignment", "training");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Trainings.TrainingLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition8");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code7");
+
+                    b.HasIndex("Category", "IsActive", "SortOrder")
+                        .HasDatabaseName("IX_lookup_definition_Category_IsActive_SortOrder5");
+
+                    b.ToTable("lookup_definition", "training");
                 });
 
             modelBuilder.Entity("Qms.Domain.Trainings.TrainingMatrixRule", b =>
@@ -2767,6 +4049,9 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid>("PositionId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("ValidityMonths")
                         .HasColumnType("integer");
 
@@ -2774,10 +4059,168 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ControlledDocumentId");
 
-                    b.HasIndex("Position", "CourseCode")
+                    b.HasIndex("PositionId", "CourseCode")
                         .IsUnique();
 
                     b.ToTable("matrix_rule", "training");
+                });
+
+            modelBuilder.Entity("Qms.Domain.WorkItems.WorkItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CompletionEvidence")
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<DateTimeOffset>("DueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("OwnerDepartment")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("OwnerDepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceModule")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("SourceRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceRecordNumber")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VerificationNote")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Verifier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("VerifierUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("VerifierUserId");
+
+                    b.HasIndex("DueAtUtc", "Status");
+
+                    b.HasIndex("OwnerUserId", "Status");
+
+                    b.ToTable("work_item", "work_tracking");
+                });
+
+            modelBuilder.Entity("Qms.Domain.WorkItems.WorkItemLookupDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id")
+                        .HasName("PK_lookup_definition9");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_lookup_definition_Category_Code8");
+
+                    b.ToTable("lookup_definition", "work_tracking");
                 });
 
             modelBuilder.Entity("Qms.Domain.Workflows.WorkflowTaskAssignment", b =>
@@ -2800,8 +4243,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AssignedDepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AssignedDepartmentNameSnapshot")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<Guid>("AssignedUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AssignedUserNameSnapshot")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTimeOffset?>("CompletedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -3030,6 +4481,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qms.Domain.Capas.Capa", b =>
                 {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("EffectivenessEvaluatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithOne()
                         .HasForeignKey("Qms.Domain.Capas.Capa", "QualityRecordId")
@@ -3049,6 +4510,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CapaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Qms.Domain.ChangeControls.ChangeAssessment", b =>
@@ -3058,10 +4524,25 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ChangeControlId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Domain.Organization.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Qms.Domain.ChangeControls.ChangeControl", b =>
                 {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
                         .HasForeignKey("QualityRecordId")
@@ -3081,6 +4562,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ChangeControlId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Qms.Domain.Complaints.Complaint", b =>
@@ -3094,6 +4580,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("LinkedDeviationId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
@@ -3109,14 +4601,37 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ComplaintId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Domain.Organization.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("InvestigatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Qms.Domain.Complaints.ComplaintResponse", b =>
                 {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Qms.Domain.Complaints.Complaint", null)
                         .WithMany("Responses")
                         .HasForeignKey("ComplaintId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("PreparedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -3149,6 +4664,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qms.Domain.Documents.ControlledDocument", b =>
                 {
+                    b.HasOne("Qms.Domain.Organization.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
                         .HasForeignKey("QualityRecordId")
@@ -3186,6 +4711,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ControlledDocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Domain.Organization.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Qms.Domain.Documents.DocumentRevision", b =>
@@ -3204,6 +4739,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ControlledDocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Qms.Domain.Organization.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Qms.Domain.ElectronicSignatures.ElectronicSignature", b =>
@@ -3217,6 +4757,17 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qms.Domain.ExternalAudits.ExternalAudit", b =>
                 {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizedCloserUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
                         .HasForeignKey("QualityRecordId")
@@ -3250,6 +4801,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("LinkedCapaId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Qms.Domain.ExternalAudits.ExternalAuditPackageAccess", b =>
@@ -3282,14 +4839,73 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("LinkedCapaId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Qms.Domain.InternalAudits.InternalAudit", b =>
                 {
+                    b.HasOne("Qms.Domain.Organization.Department", null)
+                        .WithMany()
+                        .HasForeignKey("AuditeeDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("LeadAuditorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
                         .HasForeignKey("QualityRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MasterBatchRecord", b =>
+                {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.MasterBatchRecords.MasterBatchRecord", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MasterBatchStep", b =>
+                {
+                    b.HasOne("Qms.Domain.MasterBatchRecords.MasterBatchRecord", null)
+                        .WithMany("Steps")
+                        .HasForeignKey("MasterBatchRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
@@ -3316,11 +4932,97 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Qms.Domain.SupplierAudits.SupplierAudit", b =>
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskAssessment", b =>
                 {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
                         .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskItem", b =>
+                {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActionOwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Domain.RiskManagement.RiskAssessment", null)
+                        .WithMany("Items")
+                        .HasForeignKey("RiskAssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.SpecializedRecords.SpecializedRecord", b =>
+                {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.SupplierAudits.SupplierAudit", b =>
+                {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("LeadAuditorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("PurchasingOwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("QualityApproverUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("VerifierUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -3340,6 +5042,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("LinkedCapaId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("Qms.Domain.SupplierAudits.SupplierAudit", null)
                         .WithMany("Findings")
@@ -3378,10 +5086,22 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentTrainingRequirementId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Qms.Domain.Trainings.TrainingMatrixRule", null)
                         .WithMany()
                         .HasForeignKey("MatrixRuleId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Domain.Organization.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
                         .WithMany()
@@ -3396,6 +5116,33 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ControlledDocumentId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Domain.Organization.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.WorkItems.WorkItem", b =>
+                {
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("VerifierUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Qms.Domain.Capas.Capa", b =>
@@ -3442,6 +5189,16 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Navigation("Checklist");
 
                     b.Navigation("Findings");
+                });
+
+            modelBuilder.Entity("Qms.Domain.MasterBatchRecords.MasterBatchRecord", b =>
+                {
+                    b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("Qms.Domain.RiskManagement.RiskAssessment", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Qms.Domain.SupplierAudits.SupplierAudit", b =>

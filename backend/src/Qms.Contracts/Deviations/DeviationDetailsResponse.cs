@@ -8,7 +8,12 @@ public sealed record DeviationDetailsResponse(
     IReadOnlyList<DeviationBatchImpactResponse> BatchImpacts,
     IReadOnlyList<DeviationLinkedCapaResponse> LinkedCapas,
     IReadOnlyList<DeviationAuditEventResponse> AuditTrail,
-    IReadOnlyList<DeviationTransitionResponse> AvailableTransitions);
+    IReadOnlyList<DeviationSignatureResponse> Signatures,
+    IReadOnlyList<DeviationTransitionResponse> AvailableTransitions,
+    bool CanAddInvestigation,
+    bool CanAddBatchImpact);
+
+public sealed record DeviationSignatureResponse(Guid Id, long RecordVersion, Guid SignerUserId, string SignerName, string Meaning, DateTimeOffset SignedAtUtc, string ContentHash, string? Comment);
 
 public sealed record DeviationInvestigationResponse(
     Guid Id,
@@ -16,6 +21,9 @@ public sealed record DeviationInvestigationResponse(
     string RootCauseCategory,
     string RootCauseDescription,
     string Conclusion,
+    Guid InvestigatorUserId,
+    string InvestigatorName,
+    string InvestigatorDepartment,
     DateTimeOffset CompletedAtUtc);
 
 public sealed record DeviationBatchImpactResponse(
@@ -25,6 +33,9 @@ public sealed record DeviationBatchImpactResponse(
     bool IsLocked,
     string Disposition,
     string Rationale,
+    Guid AssessedByUserId,
+    string AssessedByName,
+    string AssessedByDepartment,
     DateTimeOffset AssessedAtUtc);
 
 public sealed record DeviationAuditEventResponse(

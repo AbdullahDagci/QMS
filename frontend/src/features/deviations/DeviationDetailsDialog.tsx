@@ -21,14 +21,19 @@ import {
   Typography,
 } from '@mui/material'
 import {
+  AssignmentIndRounded,
   AccountTreeRounded,
+  BusinessRounded,
   BoltRounded,
+  CategoryRounded,
   DescriptionRounded,
-  FactCheckRounded,
+  DownloadRounded,
+  EventRounded,
   GppMaybeRounded,
   HistoryRounded,
   Inventory2Rounded,
   ManageSearchRounded,
+  PrecisionManufacturingRounded,
   TimelineRounded,
   TaskAltRounded,
   WarningAmberRounded,
@@ -37,6 +42,7 @@ import type { SvgIconComponent } from '@mui/icons-material'
 import {
   addDeviationBatchImpact,
   addDeviationInvestigation,
+  downloadDeviationFinalReport,
   getDeviationDetails,
   transitionDeviation,
   type DeviationDetails,
@@ -47,6 +53,7 @@ import { AuditTimeline } from '../../components/AuditTimeline'
 import { RecordAssignments } from '../../components/RecordAssignments'
 import { CapaCreateDialog } from '../capas/CapaWorkspace'
 import { Permissions, useAuth } from '../../security/AuthContext'
+import { getWorkflowAssignments } from '../../api/access'
 
 const flow = [
   ['Submitted', 'Gönderildi'],
@@ -78,10 +85,12 @@ const dispositionOptions: Array<SelectOption<string>> = [
 
 export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
   const queryClient = useQueryClient()
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const [note, setNote] = useState('')
   const [effectivenessRequired, setEffectivenessRequired] = useState(false)
   const [isEffective, setIsEffective] = useState(true)
+  const [signaturePassword, setSignaturePassword] = useState('')
+  const [signatureMeaningAccepted, setSignatureMeaningAccepted] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [capaDialogOpen, setCapaDialogOpen] = useState(false)
   const close = () => {
@@ -94,10 +103,21 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
     enabled: Boolean(id),
     retry: false,
   })
+  const assignments = useQuery({
+    queryKey: ['workflow-assignments', 'Deviation', id],
+    queryFn: ({ signal }) => getWorkflowAssignments('Deviation', id!, signal),
+    enabled: Boolean(id),
+    retry: false,
+  })
   const updateDetails = async (data: DeviationDetails) => {
     queryClient.setQueryData(['deviation-details', id], data)
-    await queryClient.invalidateQueries({ queryKey: ['deviations'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['deviations'] }),
+      queryClient.invalidateQueries({ queryKey: ['workflow-assignments', 'Deviation', id] }),
+    ])
     setNote('')
+    setSignaturePassword('')
+    setSignatureMeaningAccepted(false)
   }
   const transition = useMutation({
     mutationFn: (code: string) => transitionDeviation(id!, {
@@ -106,12 +126,28 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
       note: note || undefined,
       effectivenessRequired,
       isEffective,
+      signaturePassword: signaturePassword || undefined,
+      signatureMeaningAccepted,
     }),
     onSuccess: updateDetails,
+  })
+  const finalReport = useMutation({
+    mutationFn: () => downloadDeviationFinalReport(id!),
+    onSuccess: ({ blob, fileName }) => {
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+    },
   })
 
   const record = details.data?.record
   const linkedCapas = details.data?.linkedCapas ?? []
+  const activeAssignment = assignments.data?.find((item) => item.status === 'Active')
   const activeStep = record
     ? record.status === 'Closed' ? flow.length : Math.max(0, flow.findIndex(([status]) => status === record.status))
     : 0
@@ -139,6 +175,19 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
           </Stack>
           {record && (
             <Stack direction="row" spacing={1} className="record-header-badges">
+              {record.status === 'Closed' && (
+                <Button
+                  variant="contained"
+                  color="inherit"
+                  size="small"
+                  startIcon={<DownloadRounded />}
+                  disabled={finalReport.isPending}
+                  onClick={() => finalReport.mutate()}
+                  sx={{ bgcolor: 'rgba(255,255,255,.96)', color: '#0f5f61', '&:hover': { bgcolor: '#fff' } }}
+                >
+                  {finalReport.isPending ? 'PDF hazırlanıyor' : 'Nihai PDF'}
+                </Button>
+              )}
               <Chip className="status-glass-chip" icon={<TimelineRounded />} label={statusLabel(record.status)} />
               <Chip
                 className={`risk-glass-chip risk-${record.classification.toLowerCase()}`}
@@ -153,71 +202,135 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
       <DialogContent className="record-details-content">
         {details.isError && <Alert severity="error">Sapma ayrıntısı alınamadı.</Alert>}
         {mutationError && <Alert severity="error" sx={{ mb: 2 }}>{mutationError.message}</Alert>}
+        {finalReport.isError && <Alert severity="error" sx={{ mb: 2 }}>{finalReport.error.message}</Alert>}
         {record && details.data && (
-          <>
+          <Box className="record-detail-workspace">
             <Paper elevation={0} square className="record-detail-tabs-shell">
               <Tabs
                 value={activeTab}
                 onChange={(_, nextTab: number) => setActiveTab(nextTab)}
-                variant="scrollable"
+                orientation="vertical"
+                variant="standard"
                 scrollButtons="auto"
                 aria-label="Sapma detay bölümleri"
               >
-                <Tab icon={<DescriptionRounded />} iconPosition="start" label={<TabLabel text="Genel Bakış" />} />
+                <Tab disableRipple icon={<DescriptionRounded />} iconPosition="start" label={<TabLabel text="Genel Bakış" />} />
                 <Tab
+                  disableRipple
                   icon={<ManageSearchRounded />}
                   iconPosition="start"
                   label={<TabLabel text="Araştırma ve Etki" count={details.data.investigations.length + details.data.batchImpacts.length} />}
                 />
                 <Tab
+                  disableRipple
                   icon={<TaskAltRounded />}
                   iconPosition="start"
                   label={<TabLabel text="Karar ve Aksiyon" count={details.data.availableTransitions.length} />}
                 />
-                <Tab icon={<HistoryRounded />} iconPosition="start" label={<TabLabel text="Geçmiş" count={details.data.auditTrail.length} />} />
+                <Tab disableRipple icon={<HistoryRounded />} iconPosition="start" label={<TabLabel text="Geçmiş" count={details.data.auditTrail.length} />} />
               </Tabs>
             </Paper>
 
             <Box className="detail-tab-panel" role="tabpanel" aria-label={tabPanelLabel(activeTab)}>
               {activeTab === 0 && (
-                <Stack spacing={3}>
-                  <Paper elevation={0} className="workflow-visual-card">
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2.5 }}>
+                <Stack className="record-tab-canvas overview-canvas" spacing={0}>
+                  <Box className="overview-intro">
+                    <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
+                      <Box className="section-heading-icon tone-indigo"><DescriptionRounded /></Box>
+                      <Box>
+                        <Typography variant="overline">Olay özeti</Typography>
+                        <Typography variant="h6">Ne oldu, ne olması gerekiyordu?</Typography>
+                      </Box>
+                    </Stack>
+                    <Box className="overview-compare">
+                      <Box className="overview-statement is-actual">
+                        <Typography variant="caption">GERÇEKLEŞEN SAPMA</Typography>
+                        <Typography>{record.description}</Typography>
+                      </Box>
+                      <Box className="overview-statement is-expected">
+                        <Typography variant="caption">BEKLENEN / ONAYLI DURUM</Typography>
+                        <Typography>{record.expectedState}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box className="overview-decision-band">
+                    <Box className="overview-decision-item is-action">
+                      <Box className="overview-decision-icon"><BoltRounded /></Box>
+                      <Box>
+                        <Typography variant="overline">İLK KONTROL</Typography>
+                        <Typography>{record.immediateAction}</Typography>
+                      </Box>
+                    </Box>
+                    <Box className="overview-decision-item is-risk">
+                      <Box className="overview-decision-icon"><WarningAmberRounded /></Box>
+                      <Box>
+                        <Typography variant="overline">RİSK KARARI · RPN {record.riskScore}</Typography>
+                        <Typography>{record.likelihood} × {record.severity} × {record.detectability} · {record.capaRequired ? 'DÖF zorunlu' : 'DÖF zorunlu değil'}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box className="overview-metadata">
+                    <Stack direction="row" className="overview-section-title">
+                      <Box>
+                        <Typography sx={{ fontWeight: 800 }}>Kayıt bağlamı</Typography>
+                        <Typography variant="caption" color="text.secondary">Sınıflandırma, kaynak ve zaman bilgileri</Typography>
+                      </Box>
+                      <Chip size="small" variant="outlined" label={record.deviationType} />
+                    </Stack>
+                    <Box className="deviation-facts-grid">
+                      <RecordFact icon={CategoryRounded} label="Sapma türü" value={record.deviationType} />
+                      <RecordFact icon={BusinessRounded} label="Tespit eden bölüm" value={record.detectedDepartment} />
+                      <RecordFact icon={PrecisionManufacturingRounded} label="Proses aşaması" value={record.processStage} />
+                      <RecordFact icon={EventRounded} label="Gerçekleşme zamanı" value={formatDateTime(record.occurredAtUtc)} />
+                      <RecordFact icon={EventRounded} label="Tespit zamanı" value={formatDateTime(record.detectedAtUtc)} />
+                      <RecordFact icon={EventRounded} label="Hedef kapanış" value={formatDateTime(record.targetDateUtc)} />
+                    </Box>
+                  </Box>
+
+                  <Box className="overview-secondary-tools">
+                  <Paper component="details" elevation={0} className="workflow-visual-card overview-disclosure">
+                    <Box component="summary" className="overview-disclosure-summary">
                       <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
                         <Box className="section-heading-icon tone-indigo"><AccountTreeRounded /></Box>
                         <Box>
-                          <Typography sx={{ fontWeight: 780 }}>Kontrollü iş akışı</Typography>
-                          <Typography variant="caption" color="text.secondary">Kayıt yaşam döngüsündeki güncel konum</Typography>
+                          <Typography sx={{ fontWeight: 800 }}>Süreç durumu</Typography>
+                          <Typography variant="caption" color="text.secondary">Tüm yaşam döngüsü adımlarını göster</Typography>
                         </Box>
                       </Stack>
                       <Chip size="small" color="primary" label={statusLabel(record.status)} />
-                    </Stack>
-                    <Stepper activeStep={activeStep} alternativeLabel className="deviation-stepper visual-stepper">
-                      {flow.map(([, label]) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
-                    </Stepper>
+                    </Box>
+                    <Box className="overview-disclosure-content">
+                      <Stepper activeStep={activeStep} alternativeLabel className="deviation-stepper visual-stepper">
+                        {flow.map(([, label]) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
+                      </Stepper>
+                    </Box>
                   </Paper>
-
-                  <Box className="detail-grid">
-                    <DetailCard title="Sapma tanımı" value={record.description} icon={DescriptionRounded} tone="indigo" />
-                    <DetailCard title="Beklenen durum" value={record.expectedState} icon={FactCheckRounded} tone="teal" />
-                    <DetailCard title="Acil aksiyon" value={record.immediateAction} icon={BoltRounded} tone="amber" />
-                    <DetailCard
-                      title="Risk kararı"
-                      value={`${record.likelihood} × ${record.severity} × ${record.detectability} = ${record.riskScore}. ${record.capaRequired ? 'DÖF zorunlu.' : 'DÖF zorunlu değil.'}`}
-                      icon={WarningAmberRounded}
-                      tone="rose"
-                    />
+                  <Box component="details" className="assignments-disclosure">
+                    <Box component="summary" className="assignments-disclosure-summary">
+                      <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
+                        <Box className="section-heading-icon tone-teal"><TaskAltRounded /></Box>
+                        <Box>
+                          <Typography sx={{ fontWeight: 800 }}>Görevler ve yetkililer</Typography>
+                          <Typography variant="caption" color="text.secondary">Atamaları ve tamamlanan görevleri gerektiğinde görüntüleyin</Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                    <Box className="assignments-disclosure-content">
+                      <RecordAssignments aggregateType="Deviation" aggregateId={record.id} />
+                    </Box>
                   </Box>
-                  <RecordAssignments aggregateType="Deviation" aggregateId={record.id} />
+                  </Box>
                 </Stack>
               )}
 
               {activeTab === 1 && (
-                <Stack spacing={2.5}>
-                  {can(Permissions.deviationInvestigate) && record.status === 'Investigation' && (
+                <Stack className="record-tab-canvas investigation-tab-canvas" spacing={2.5}>
+                  {can(Permissions.deviationInvestigate) && details.data.canAddInvestigation && (
                     <InvestigationForm id={record.id} version={record.version} onSuccess={updateDetails} />
                   )}
-                  {can(Permissions.deviationInvestigate) && record.status === 'ImpactAssessment' && (
+                  {can(Permissions.deviationInvestigate) && details.data.canAddBatchImpact && (
                     <BatchImpactForm id={record.id} version={record.version} onSuccess={updateDetails} />
                   )}
                   <Box className="detail-columns visual-detail-columns">
@@ -241,6 +354,7 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
                             </Stack>
                             <Typography variant="body2" sx={{ mt: 1 }}>{item.rootCauseDescription}</Typography>
                             <Typography variant="caption" color="text.secondary">Sonuç: {item.conclusion}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>Araştırmacı (kayıt anı): {item.investigatorName} · {item.investigatorDepartment}</Typography>
                           </Paper>
                         ))}
                         {details.data.investigations.length === 0 && (
@@ -270,6 +384,7 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
                             <Typography variant="caption" color="text.secondary">
                               {item.isAffected ? 'Etkilendi' : 'Etkilenmedi'} · {item.isLocked ? 'Kilitli' : 'Kilitli değil'}
                             </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>Değerlendiren (kayıt anı): {item.assessedByName} · {item.assessedByDepartment}</Typography>
                           </Paper>
                         ))}
                         {details.data.batchImpacts.length === 0 && (
@@ -282,7 +397,7 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
               )}
 
               {activeTab === 2 && (
-                <Paper variant="outlined" className="transition-panel tab-transition-panel">
+                <Paper variant="outlined" className="record-tab-canvas transition-panel tab-transition-panel">
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>Sıradaki kontrollü adım</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
                     Kayıt yalnızca yetkili karar ve gerekli kanıtlarla bir sonraki aşamaya geçirilebilir.
@@ -321,6 +436,14 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
                       label="Aksiyon etkili bulundu"
                     />
                   )}
+                  {can(Permissions.deviationManage) && details.data.availableTransitions.some(item => ['start-preliminary-review', 'complete-quality-assessment', 'complete-effectiveness-review', 'close'].includes(item.code)) && (
+                    <Paper variant="outlined" sx={{ mt: 2, p: 2, borderColor: '#d7e2df', background: '#f8fbfa' }}>
+                      <Typography sx={{ fontWeight: 800 }}>Elektronik imza doğrulaması</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: .5 }}>Bu karar kullanıcı kimliğiniz, imza anlamı, kayıt sürümü ve içerik hash’i ile bağlanacaktır.</Typography>
+                      <TextField label="Parolanızı yeniden girin" type="password" autoComplete="current-password" value={signaturePassword} onChange={event => setSignaturePassword(event.target.value)} fullWidth sx={{ mt: 1.5 }} helperText="Geliştirme ortamı imza parolası: Qms.Dev!2026" />
+                      <FormControlLabel sx={{ mt: 1 }} control={<Checkbox checked={signatureMeaningAccepted} onChange={event => setSignatureMeaningAccepted(event.target.checked)} />} label="Bu kararın elektronik imza anlamını okudum ve onaylıyorum." />
+                    </Paper>
+                  )}
                   <Stack direction="row" spacing={1.5} sx={{ mt: 2, flexWrap: 'wrap' }}>
                     {!can(Permissions.deviationManage) && details.data.availableTransitions.length > 0 && (
                       <Alert severity="warning">Bu aşamadaki durum kararını vermek için Kalite Güvence veya Onaylayan rolü gerekir.</Alert>
@@ -332,6 +455,7 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
                         disabled={
                           transition.isPending ||
                           (item.noteRequired && !note.trim()) ||
+                          (['start-preliminary-review', 'complete-quality-assessment', 'complete-effectiveness-review', 'close'].includes(item.code) && (!signaturePassword || !signatureMeaningAccepted)) ||
                           (record.status === 'QualityAssessment' && record.capaRequired && linkedCapas.length === 0)
                         }
                         onClick={() => transition.mutate(item.code)}
@@ -339,24 +463,51 @@ export function DeviationDetailsDialog({ id, onClose }: { id: string | null; onC
                         {item.label}
                       </Button>
                     ))}
-                    {details.data.availableTransitions.length === 0 && (
-                      <Typography color="text.secondary">Bu aşama için kullanılabilir geçiş bulunmuyor.</Typography>
+                    {details.data.availableTransitions.length === 0 && activeAssignment && activeAssignment.assignedUserId !== user.id && (
+                      <Alert
+                        severity="info"
+                        icon={<AssignmentIndRounded />}
+                        sx={{ width: '100%' }}
+                      >
+                        <Typography sx={{ fontWeight: 800 }}>Sıradaki görev {activeAssignment.assignedUserName} kullanıcısında</Typography>
+                        <Typography variant="body2">
+                          {activeAssignment.departmentName ? `${activeAssignment.departmentName} · ` : ''}
+                          Bu aşamadaki işlemler yalnızca atanan kullanıcı veya etkin delegesi tarafından tamamlanabilir.
+                        </Typography>
+                      </Alert>
+                    )}
+                    {details.data.availableTransitions.length === 0 && !activeAssignment && record.status !== 'Closed' && (
+                      <Alert severity="warning" sx={{ width: '100%' }}>
+                        Bu aşama için etkin görev ataması bulunmuyor. Sistem yöneticisi kayıt görevini kontrol etmelidir.
+                      </Alert>
+                    )}
+                    {details.data.availableTransitions.length === 0 && record.status === 'Closed' && (
+                      <Typography color="text.secondary">Kayıt kapalı; bekleyen işlem bulunmuyor.</Typography>
                     )}
                   </Stack>
                 </Paper>
               )}
 
               {activeTab === 3 && (
-                <Box className="history-tab-panel">
+                <Box className="record-tab-canvas history-tab-panel">
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>Kronolojik durum geçmişi</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4, mb: 2 }}>
                     Tüm işlemler en yeni kayıttan en eski kayda doğru tarih bazında sıralanır.
                   </Typography>
+                  {details.data.signatures.length > 0 && <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                    <Typography sx={{ fontWeight: 800, mb: 1 }}>Elektronik imzalar</Typography>
+                    <Stack spacing={1}>
+                      {details.data.signatures.map((signature) => <Box key={signature.id}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{signature.meaning} · {signature.signerName}</Typography>
+                        <Typography variant="caption" color="text.secondary">Sürüm {signature.recordVersion} · {formatDateTime(signature.signedAtUtc)} · Hash {signature.contentHash.slice(0, 12)}…</Typography>
+                      </Box>)}
+                    </Stack>
+                  </Paper>}
                   <AuditTimeline events={details.data.auditTrail} labels={eventLabels} />
                 </Box>
               )}
             </Box>
-          </>
+          </Box>
         )}
       </DialogContent>
       {record && can(Permissions.capaPlan) && <CapaCreateDialog open={capaDialogOpen} onClose={() => setCapaDialogOpen(false)} sourceDeviation={{ id: record.id, recordNumber: record.recordNumber, title: record.title, description: record.description }} onCreated={() => setCapaDialogOpen(false)} />}
@@ -443,23 +594,6 @@ function BatchImpactForm({ id, version, onSuccess }: { id: string; version: numb
   )
 }
 
-function DetailCard({ title, value, icon: Icon, tone }: {
-  title: string
-  value: string
-  icon: SvgIconComponent
-  tone: 'indigo' | 'teal' | 'amber' | 'rose'
-}) {
-  return (
-    <Paper variant="outlined" className={`detail-card visual-detail-card detail-tone-${tone}`}>
-      <Box className="detail-card-icon"><Icon /></Box>
-      <Box>
-        <Typography className="detail-card-label">{title}</Typography>
-        <Typography className="detail-card-value">{value}</Typography>
-      </Box>
-    </Paper>
-  )
-}
-
 function VisualEmptyState({ text, icon: Icon }: { text: string; icon: SvgIconComponent }) {
   return (
     <Box className="visual-empty-state">
@@ -490,4 +624,18 @@ function statusLabel(status: string) {
   if (status === 'Draft') return 'Taslak'
   if (status === 'Voided') return 'İptal'
   return flow.find(([value]) => value === status)?.[1] ?? status
+}
+
+function RecordFact({ icon: Icon, label, value }: { icon: SvgIconComponent; label: string; value: string }) {
+  return <Box className="deviation-record-fact">
+    <Box className="deviation-record-fact-icon"><Icon fontSize="small" /></Box>
+    <Box>
+      <Typography variant="caption" className="deviation-record-fact-label">{label}</Typography>
+      <Typography variant="body2" className="deviation-record-fact-value">{value}</Typography>
+    </Box>
+  </Box>
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }

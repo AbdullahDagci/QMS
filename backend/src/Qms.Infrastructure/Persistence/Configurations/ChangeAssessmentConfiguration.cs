@@ -12,5 +12,7 @@ public sealed class ChangeAssessmentConfiguration : IEntityTypeConfiguration<Cha
         builder.Property(x => x.Department).HasMaxLength(120).IsRequired(); builder.Property(x => x.Reviewer).HasMaxLength(160).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired(); builder.Property(x => x.ImpactSummary).HasMaxLength(2000); builder.Property(x => x.RequiredActions).HasMaxLength(2000);
         builder.HasIndex(x => new { x.ChangeControlId, x.Department }).IsUnique();
+        builder.HasOne<Qms.Domain.Organization.Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Qms.Infrastructure.Identity.ApplicationUser>().WithMany().HasForeignKey(x => x.ReviewerUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

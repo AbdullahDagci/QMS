@@ -1,25 +1,352 @@
-import type { ColumnFilter, PagedResponse } from './deviations'
-import { qmsFetch } from './http'
+import type { ColumnFilter, PagedResponse } from "./deviations";
+import { qmsFetch } from "./http";
 
-export type DocumentStatus = 'Draft'|'Writing'|'Review'|'Approval'|'Approved'|'TrainingWaiting'|'Effective'|'RevisionPending'|'PeriodicReview'|'Withdrawn'|'Archived'|'Voided'
-export interface DocumentListItem { id:string; recordNumber:string; sourceChangeControlId:string|null; sourceRecordNumber:string|null; documentCode:string; title:string; documentType:string; owner:string; department:string; confidentiality:string; currentRevision:string; status:DocumentStatus; plannedEffectiveDateUtc:string; nextReviewDateUtc:string|null; pendingReviews:number; pendingTrainings:number; createdAtUtc:string; version:number }
-export interface DocumentRecord extends DocumentListItem { qualityRecordId:string; reviewPeriodMonths:number; currentRevisionId:string; withdrawalReason:string|null; updatedAtUtc:string; archivedAtUtc:string|null }
-export interface DocumentRevision { id:string; versionLabel:string; content:string; changeSummary:string; preparedBy:string; status:string; createdAtUtc:string; approvedAtUtc:string|null; effectiveAtUtc:string|null; isCurrent:boolean }
-export interface DocumentReview { id:string; revisionId:string; department:string; reviewer:string; status:'Pending'|'Approved'|'ChangesRequested'; comment:string|null; completedAtUtc:string|null }
-export interface DocumentTraining { id:string; revisionId:string; position:string; assignedUser:string; status:'Pending'|'Completed'; evidence:string|null; completedAtUtc:string|null }
-export interface ControlledCopy { id:string; revisionId:string; copyNumber:string; recipient:string; purpose:string; status:'Issued'|'Returned'|'Destroyed'; issuedAtUtc:string; dueBackAtUtc:string|null; returnedAtUtc:string|null; destroyedAtUtc:string|null }
-export interface DocumentDetails { record:DocumentRecord; revisions:DocumentRevision[]; reviews:DocumentReview[]; trainingRequirements:DocumentTraining[]; controlledCopies:ControlledCopy[]; readReceipts:Array<{id:string;revisionId:string;userId:string;userDisplayName:string;signatureMeaning:string;acknowledgedAtUtc:string}>; auditTrail:Array<{id:string;version:number;eventType:string;actor:string;occurredAtUtc:string;reason:string|null;payload?:Record<string,unknown>}>; availableTransitions:Array<{code:string;label:string;noteRequired:boolean}> }
-export interface CreateDocumentInput { sourceChangeControlId?:string|null; documentCode:string; title:string; documentType:string; owner:string; department:string; confidentiality:string; reviewPeriodMonths:number; plannedEffectiveDateUtc:string; content:string; changeSummary:string; reviewDepartments:string[]; trainingPositions:string[] }
-const json={'Content-Type':'application/json'}
-async function request<T>(url:string,init?:RequestInit):Promise<T>{const response=await qmsFetch(url,init);if(!response.ok){const p=await response.json().catch(()=>null) as {detail?:string;title?:string}|null;throw new Error(p?.detail??p?.title??`İstek başarısız (${response.status})`)}return response.json() as Promise<T>}
-export const searchDocuments=(input:{page:number;pageSize:10|25|50|100;sortBy:string;sortDirection:'asc'|'desc';filters:ColumnFilter[]},signal?:AbortSignal)=>request<PagedResponse<DocumentListItem>>('/api/v1/documents/search',{method:'POST',headers:json,body:JSON.stringify(input),signal})
-export const createDocument=(input:CreateDocumentInput)=>request<DocumentDetails>('/api/v1/documents',{method:'POST',headers:json,body:JSON.stringify(input)})
-export const getDocumentDetails=(id:string,signal?:AbortSignal)=>request<DocumentDetails>(`/api/v1/documents/${id}/details`,{signal})
-export const updateDocumentDraft=(id:string,expectedVersion:number,content:string,changeSummary:string)=>request<DocumentDetails>(`/api/v1/documents/${id}/draft`,{method:'PUT',headers:json,body:JSON.stringify({expectedVersion,content,changeSummary})})
-export const completeDocumentReview=(id:string,reviewId:string,expectedVersion:number,approved:boolean,comment:string)=>request<DocumentDetails>(`/api/v1/documents/${id}/reviews/${reviewId}/complete`,{method:'POST',headers:json,body:JSON.stringify({expectedVersion,approved,comment})})
-export const completeDocumentTraining=(id:string,requirementId:string,expectedVersion:number,evidence:string)=>request<DocumentDetails>(`/api/v1/documents/${id}/training/${requirementId}/complete`,{method:'POST',headers:json,body:JSON.stringify({expectedVersion,evidence})})
-export const startDocumentRevision=(id:string,input:{expectedVersion:number;major:boolean;changeSummary:string;reviewDepartments:string[];trainingPositions:string[]})=>request<DocumentDetails>(`/api/v1/documents/${id}/revisions`,{method:'POST',headers:json,body:JSON.stringify(input)})
-export const issueControlledCopy=(id:string,input:{expectedVersion:number;copyNumber:string;recipient:string;purpose:string;dueBackAtUtc:string|null})=>request<DocumentDetails>(`/api/v1/documents/${id}/copies`,{method:'POST',headers:json,body:JSON.stringify(input)})
-export const closeControlledCopy=(id:string,copyId:string,expectedVersion:number,destroyed:boolean)=>request<DocumentDetails>(`/api/v1/documents/${id}/copies/${copyId}/close`,{method:'POST',headers:json,body:JSON.stringify({expectedVersion,destroyed})})
-export const acknowledgeDocument=(id:string,expectedVersion:number,signatureMeaning:string)=>request<DocumentDetails>(`/api/v1/documents/${id}/read-receipts`,{method:'POST',headers:json,body:JSON.stringify({expectedVersion,signatureMeaning})})
-export const transitionDocument=(id:string,expectedVersion:number,transition:string,note?:string,requiresRevision=false)=>request<DocumentDetails>(`/api/v1/documents/${id}/transitions`,{method:'POST',headers:json,body:JSON.stringify({expectedVersion,transition,note,requiresRevision})})
+export type DocumentStatus =
+  | "Draft"
+  | "Writing"
+  | "Review"
+  | "Approval"
+  | "Approved"
+  | "TrainingWaiting"
+  | "Effective"
+  | "RevisionPending"
+  | "PeriodicReview"
+  | "Withdrawn"
+  | "Archived"
+  | "Voided";
+export interface DocumentListItem {
+  id: string;
+  recordNumber: string;
+  sourceChangeControlId: string | null;
+  sourceRecordNumber: string | null;
+  documentCode: string;
+  title: string;
+  documentType: string;
+  owner: string;
+  department: string;
+  confidentiality: string;
+  currentRevision: string;
+  status: DocumentStatus;
+  plannedEffectiveDateUtc: string;
+  nextReviewDateUtc: string | null;
+  pendingReviews: number;
+  pendingTrainings: number;
+  createdAtUtc: string;
+  version: number;
+}
+export interface DocumentRecord extends DocumentListItem {
+  qualityRecordId: string;
+  ownerUserId: string | null;
+  departmentId: string | null;
+  reviewPeriodMonths: number;
+  currentRevisionId: string;
+  withdrawalReason: string | null;
+  updatedAtUtc: string;
+  archivedAtUtc: string | null;
+}
+export interface DocumentRevision {
+  id: string;
+  versionLabel: string;
+  content: string;
+  changeSummary: string;
+  preparedBy: string;
+  status: string;
+  createdAtUtc: string;
+  approvedAtUtc: string | null;
+  effectiveAtUtc: string | null;
+  isCurrent: boolean;
+}
+export interface DocumentReview {
+  id: string;
+  revisionId: string;
+  departmentId: string | null;
+  department: string;
+  reviewerUserId: string | null;
+  reviewer: string;
+  status: "Pending" | "Approved" | "ChangesRequested";
+  comment: string | null;
+  completedAtUtc: string | null;
+}
+export interface DocumentTraining {
+  id: string;
+  revisionId: string;
+  positionId: string | null;
+  position: string;
+  assignedUser: string;
+  status: "Pending" | "Completed";
+  evidence: string | null;
+  completedAtUtc: string | null;
+}
+export interface ControlledCopy {
+  id: string;
+  revisionId: string;
+  copyNumber: string;
+  recipient: string;
+  purpose: string;
+  status: "Issued" | "Returned" | "Destroyed";
+  issuedAtUtc: string;
+  dueBackAtUtc: string | null;
+  returnedAtUtc: string | null;
+  destroyedAtUtc: string | null;
+}
+export interface DocumentDetails {
+  record: DocumentRecord;
+  revisions: DocumentRevision[];
+  reviews: DocumentReview[];
+  trainingRequirements: DocumentTraining[];
+  controlledCopies: ControlledCopy[];
+  readReceipts: Array<{
+    id: string;
+    revisionId: string;
+    userId: string;
+    userDisplayName: string;
+    signatureMeaning: string;
+    acknowledgedAtUtc: string;
+  }>;
+  auditTrail: Array<{
+    id: string;
+    version: number;
+    eventType: string;
+    actor: string;
+    occurredAtUtc: string;
+    reason: string | null;
+    payload?: Record<string, unknown>;
+  }>;
+  signatures: Array<{
+    id: string;
+    recordVersion: number;
+    signerUserId: string;
+    signerName: string;
+    meaning: string;
+    signedAtUtc: string;
+    contentHash: string;
+    comment: string | null;
+  }>;
+  availableTransitions: Array<{
+    code: string;
+    label: string;
+    noteRequired: boolean;
+  }>;
+  actionableTaskRoles: string[];
+}
+export interface DocumentLookupOption {
+  code: string;
+  name: string;
+}
+export interface DocumentLookupDefinition {
+  id: string;
+  category: "DocumentType" | "Confidentiality";
+  code: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+export interface DocumentLookups {
+  owners: Array<{
+    id: string;
+    displayName: string;
+    departmentName: string | null;
+  }>;
+  departments: Array<{
+    id: string;
+    code: string;
+    name: string;
+    reviewerUserId: string;
+    reviewerName: string;
+  }>;
+  positions: Array<{
+    id: string;
+    code: string;
+    name: string;
+    departmentName: string | null;
+  }>;
+  documentTypes: DocumentLookupOption[];
+  confidentialityLevels: DocumentLookupOption[];
+}
+export interface CreateDocumentInput {
+  sourceChangeControlId?: string | null;
+  documentCode: string;
+  title: string;
+  documentType: string;
+  ownerUserId: string;
+  departmentId: string;
+  confidentiality: string;
+  reviewPeriodMonths: number;
+  plannedEffectiveDateUtc: string;
+  content: string;
+  changeSummary: string;
+  reviewDepartmentIds: string[];
+  trainingPositionIds: string[];
+}
+const json = { "Content-Type": "application/json" };
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await qmsFetch(url, init);
+  if (!response.ok) {
+    const p = (await response.json().catch(() => null)) as {
+      detail?: string;
+      title?: string;
+    } | null;
+    throw new Error(
+      p?.detail ?? p?.title ?? `İstek başarısız (${response.status})`,
+    );
+  }
+  return response.json() as Promise<T>;
+}
+export const searchDocuments = (
+  input: {
+    page: number;
+    pageSize: 10 | 25 | 50 | 100;
+    sortBy: string;
+    sortDirection: "asc" | "desc";
+    filters: ColumnFilter[];
+  },
+  signal?: AbortSignal,
+) =>
+  request<PagedResponse<DocumentListItem>>("/api/v1/documents/search", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(input),
+    signal,
+  });
+export const getDocumentLookups = (signal?: AbortSignal) =>
+  request<DocumentLookups>("/api/v1/documents/lookups", { signal });
+export const listDocumentLookupDefinitions = (signal?: AbortSignal) =>
+  request<DocumentLookupDefinition[]>("/api/v1/documents/lookup-definitions", { signal });
+export const createDocumentLookupDefinition = (input: { category: string; code: string; name: string; sortOrder: number }) =>
+  request<DocumentLookupDefinition>("/api/v1/documents/lookup-definitions", { method: "POST", headers: json, body: JSON.stringify(input) });
+export const updateDocumentLookupDefinition = (id: string, input: { name: string; sortOrder: number; isActive: boolean }) =>
+  request<DocumentLookupDefinition>(`/api/v1/documents/lookup-definitions/${id}`, { method: "PUT", headers: json, body: JSON.stringify(input) });
+export const createDocument = (input: CreateDocumentInput) =>
+  request<DocumentDetails>("/api/v1/documents", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(input),
+  });
+export const getDocumentDetails = (id: string, signal?: AbortSignal) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/details`, { signal });
+export async function downloadDocumentFinalReport(id: string): Promise<{ blob: Blob; fileName: string; sha256: string | null }> {
+  const response = await qmsFetch(`/api/v1/documents/${id}/final-report`);
+  if (!response.ok) { const p = (await response.json().catch(() => null)) as { detail?: string } | null; throw new Error(p?.detail ?? `Rapor alınamadı (${response.status})`); }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]; const plain = /filename="?([^";]+)"?/i.exec(disposition)?.[1];
+  return { blob: await response.blob(), fileName: encoded ? decodeURIComponent(encoded) : (plain ?? "dokuman-nihai-kayit.pdf"), sha256: response.headers.get("x-content-sha256") };
+}
+export const updateDocumentDraft = (
+  id: string,
+  expectedVersion: number,
+  content: string,
+  changeSummary: string,
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/draft`, {
+    method: "PUT",
+    headers: json,
+    body: JSON.stringify({ expectedVersion, content, changeSummary }),
+  });
+export const completeDocumentReview = (
+  id: string,
+  reviewId: string,
+  expectedVersion: number,
+  approved: boolean,
+  comment: string,
+) =>
+  request<DocumentDetails>(
+    `/api/v1/documents/${id}/reviews/${reviewId}/complete`,
+    {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ expectedVersion, approved, comment }),
+    },
+  );
+export const completeDocumentTraining = (
+  id: string,
+  requirementId: string,
+  expectedVersion: number,
+  evidence: string,
+) =>
+  request<DocumentDetails>(
+    `/api/v1/documents/${id}/training/${requirementId}/complete`,
+    {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ expectedVersion, evidence }),
+    },
+  );
+export const startDocumentRevision = (
+  id: string,
+  input: {
+    expectedVersion: number;
+    major: boolean;
+    changeSummary: string;
+    reviewDepartmentIds: string[];
+    trainingPositionIds: string[];
+  },
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/revisions`, {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(input),
+  });
+export const issueControlledCopy = (
+  id: string,
+  input: {
+    expectedVersion: number;
+    copyNumber: string;
+    recipient: string;
+    purpose: string;
+    dueBackAtUtc: string | null;
+  },
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/copies`, {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(input),
+  });
+export const closeControlledCopy = (
+  id: string,
+  copyId: string,
+  expectedVersion: number,
+  destroyed: boolean,
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/copies/${copyId}/close`, {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ expectedVersion, destroyed }),
+  });
+export const acknowledgeDocument = (
+  id: string,
+  expectedVersion: number,
+  signatureMeaning: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/read-receipts`, {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({
+      expectedVersion,
+      signatureMeaning,
+      signaturePassword,
+      signatureMeaningAccepted,
+    }),
+  });
+export const transitionDocument = (
+  id: string,
+  expectedVersion: number,
+  transition: string,
+  note?: string,
+  requiresRevision = false,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
+) =>
+  request<DocumentDetails>(`/api/v1/documents/${id}/transitions`, {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({
+      expectedVersion,
+      transition,
+      note,
+      requiresRevision,
+      signaturePassword,
+      signatureMeaningAccepted,
+    }),
+  });

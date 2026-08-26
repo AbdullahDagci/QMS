@@ -18,6 +18,8 @@ public sealed class ChangeControlConfiguration : IEntityTypeConfiguration<Change
         builder.HasIndex(x => x.QualityRecordId).IsUnique(); builder.HasIndex(x => x.SourceCapaId); builder.HasIndex(x => new { x.Status, x.TargetDateUtc });
         builder.HasOne<Qms.Domain.QualityRecords.QualityRecord>().WithMany().HasForeignKey(x => x.QualityRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Qms.Domain.Capas.Capa>().WithMany().HasForeignKey(x => x.SourceCapaId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Qms.Infrastructure.Identity.ApplicationUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.OwnerUserId);
         builder.HasMany(x => x.Assessments).WithOne().HasForeignKey(x => x.ChangeControlId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(x => x.Actions).WithOne().HasForeignKey(x => x.ChangeControlId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(x => x.Assessments).UsePropertyAccessMode(PropertyAccessMode.Field);

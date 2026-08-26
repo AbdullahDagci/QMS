@@ -30,6 +30,7 @@ export interface ComplaintRecord extends ComplaintListItem {
   sampleExpected: boolean;
   returnExpected: boolean;
   attachmentSummary: string;
+  ownerUserId: string;
   linkedDeviationId: string | null;
   linkedDeviationNumber: string | null;
   linkedCapaId: string | null;
@@ -46,7 +47,9 @@ export interface ComplaintRecord extends ComplaintListItem {
 }
 export interface ComplaintInvestigation {
   id: string;
+  departmentId: string;
   department: string;
+  investigatorUserId: string;
   investigator: string;
   status: string;
   findings: string | null;
@@ -59,7 +62,9 @@ export interface ComplaintResponseVersion {
   versionNumber: number;
   content: string;
   status: string;
+  preparedByUserId: string;
   preparedBy: string;
+  approvedByUserId: string | null;
   approvedBy: string | null;
   createdAtUtc: string;
   approvedAtUtc: string | null;
@@ -77,6 +82,8 @@ export interface ComplaintDetails {
     reason: string | null;
     payload?: Record<string, unknown>;
   }>;
+  signatures: Array<{ id: string; recordVersion: number; signerUserId: string; signer: string; meaning: string; signedAtUtc: string; contentHash: string; comment: string | null }>;
+  actionableTaskRoles: string[];
   availableTransitions: Array<{
     code: string;
     label: string;
@@ -99,11 +106,13 @@ export interface CreateComplaintInput {
   sampleExpected: boolean;
   returnExpected: boolean;
   attachmentSummary: string;
-  owner: string;
+  ownerUserId: string;
   preliminaryResponseDueAtUtc: string;
   finalResponseDueAtUtc: string;
-  investigationDepartments: string[];
+  investigationDepartmentIds: string[];
 }
+export interface ComplaintOptions { owners: Array<{ id: string; name: string; departmentId: string | null; department: string | null }>; departments: Array<{ id: string; code: string; name: string; investigatorUserId: string; investigator: string }>; channels: Array<{ code: string; name: string }>; countries: Array<{ code: string; name: string }>; complaintTypes: Array<{ code: string; name: string }> }
+export interface ComplaintLookupDefinition { id: string; category: string; code: string; name: string; sortOrder: number; isActive: boolean }
 const headers = { "Content-Type": "application/json" };
 async function request<T>(url: string, init?: RequestInit) {
   const response = await qmsFetch(url, init);
@@ -136,6 +145,11 @@ export const searchComplaints = (
   });
 export const getComplaintDetails = (id: string, signal?: AbortSignal) =>
   request<ComplaintDetails>(`/api/v1/complaints/${id}/details`, { signal });
+export const downloadComplaintFinalReport = async (id: string, recordNumber: string) => { const response = await qmsFetch(`/api/v1/complaints/${id}/final-report`); if (!response.ok) throw new Error("Nihai şikâyet PDF'i indirilemedi."); const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${recordNumber}-nihai-sikayet.pdf`; anchor.click(); URL.revokeObjectURL(url); };
+export const getComplaintOptions = (signal?: AbortSignal) => request<ComplaintOptions>("/api/v1/complaints/options", { signal });
+export const getComplaintLookupDefinitions = () => request<ComplaintLookupDefinition[]>("/api/v1/complaints/lookup-definitions");
+export const createComplaintLookupDefinition = (input: { category: string; code: string; name: string; sortOrder: number }) => request<ComplaintLookupDefinition>("/api/v1/complaints/lookup-definitions", { method: "POST", headers, body: JSON.stringify(input) });
+export const updateComplaintLookupDefinition = (id: string, input: { name: string; sortOrder: number; isActive: boolean }) => request<ComplaintLookupDefinition>(`/api/v1/complaints/lookup-definitions/${id}`, { method: "PUT", headers, body: JSON.stringify(input) });
 export const createComplaint = (input: CreateComplaintInput) =>
   request<ComplaintDetails>("/api/v1/complaints", {
     method: "POST",
@@ -147,11 +161,13 @@ export const transitionComplaint = (
   expectedVersion: number,
   transition: string,
   note?: string,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
 ) =>
   request<ComplaintDetails>(`/api/v1/complaints/${id}/transitions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ expectedVersion, transition, note }),
+    body: JSON.stringify({ expectedVersion, transition, note, signaturePassword, signatureMeaningAccepted }),
   });
 export const addComplaintResponse = (
   id: string,
@@ -168,10 +184,12 @@ export const approveComplaintResponse = (
   id: string,
   responseId: string,
   expectedVersion: number,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<ComplaintDetails>(
     `/api/v1/complaints/${id}/responses/${responseId}/approve`,
-    { method: "POST", headers, body: JSON.stringify({ expectedVersion }) },
+    { method: "POST", headers, body: JSON.stringify({ expectedVersion, signaturePassword, signatureMeaningAccepted }) },
   );
 export const completeComplaintInvestigation = (
   id: string,
@@ -211,7 +229,7 @@ export const decideComplaintCapa = (
   id: string,
   expectedVersion: number,
   capaRequired: boolean,
-  owner: string,
+  ownerUserId: string,
   targetDateUtc: string,
   effectivenessRequired: boolean,
 ) =>
@@ -221,7 +239,7 @@ export const decideComplaintCapa = (
     body: JSON.stringify({
       expectedVersion,
       capaRequired,
-      owner,
+      ownerUserId,
       targetDateUtc,
       effectivenessRequired,
     }),

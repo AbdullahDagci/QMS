@@ -16,3 +16,8 @@ frontend/*.tsbuildinfo
 
 qms-files/
 postgres-data/
+
+# Local runtime and generated test artifacts
+/.tmp-*
+/tmp/
+/output/

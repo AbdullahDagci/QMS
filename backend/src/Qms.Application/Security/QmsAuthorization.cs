@@ -19,9 +19,20 @@ public static class QmsRoles
 
     public static readonly string[] All =
     [
-        Administrator, QualityAssurance, Approver, DeviationReporter, Investigator, ActionOwner,
-        QualityViewer, QualifiedPerson, DepartmentManager, RegulatoryAffairs, DocumentController,
-        TrainingCoordinator, Learner, Trainer
+        Administrator,
+        QualityAssurance,
+        Approver,
+        DeviationReporter,
+        Investigator,
+        ActionOwner,
+        QualityViewer,
+        QualifiedPerson,
+        DepartmentManager,
+        RegulatoryAffairs,
+        DocumentController,
+        TrainingCoordinator,
+        Learner,
+        Trainer,
     ];
 }
 
@@ -37,6 +48,7 @@ public static class WorkflowTaskRoles
     public const string ChangeBoard = "ChangeBoard";
     public const string DocumentAuthor = "DocumentAuthor";
     public const string DocumentApprover = "DocumentApprover";
+    public const string DocumentCoordinator = "DocumentCoordinator";
     public const string TrainingCoordinator = "TrainingCoordinator";
     public const string Learner = "Learner";
     public const string Trainer = "Trainer";
@@ -56,6 +68,16 @@ public static class WorkflowTaskRoles
     public const string SupplierResponder = "SupplierResponder";
     public const string SupplierAuditVerifier = "SupplierAuditVerifier";
     public const string SupplierQualityApprover = "SupplierQualityApprover";
+    public const string WorkItemOwner = "WorkItemOwner";
+    public const string WorkItemVerifier = "WorkItemVerifier";
+    public const string RiskOwner = "RiskOwner";
+    public const string RiskApprover = "RiskApprover";
+    public const string MbrAuthor = "MbrAuthor";
+    public const string MbrReviewer = "MbrReviewer";
+    public const string MbrApprover = "MbrApprover";
+    public const string SpecializedOwner = "SpecializedOwner";
+    public const string SpecializedReviewer = "SpecializedReviewer";
+    public const string SpecializedApprover = "SpecializedApprover";
 }
 
 public static class QmsPolicies
@@ -102,19 +124,82 @@ public static class QmsPolicies
     public const string SupplierAuditExecute = "supplier-audit.execute";
     public const string SupplierAuditRespond = "supplier-audit.respond";
     public const string SupplierAuditApprove = "supplier-audit.approve";
+    public const string WorkTrackingView = "work-tracking.view";
+    public const string WorkTrackingCreate = "work-tracking.create";
+    public const string WorkTrackingManage = "work-tracking.manage";
+    public const string WorkTrackingVerify = "work-tracking.verify";
+    public const string RiskView = "risk.view";
+    public const string RiskCreate = "risk.create";
+    public const string RiskManage = "risk.manage";
+    public const string RiskApprove = "risk.approve";
+    public const string MbrView = "mbr.view";
+    public const string MbrCreate = "mbr.create";
+    public const string MbrWrite = "mbr.write";
+    public const string MbrReview = "mbr.review";
+    public const string MbrApprove = "mbr.approve";
+    public const string SpecializedView = "specialized.view";
+    public const string SpecializedManage = "specialized.manage";
     public const string AdministrationManage = "administration.manage";
 
     public static readonly string[] All =
     [
-        QualityView, DeviationCreate, DeviationInvestigate, DeviationManage,
-        CapaPlan, CapaCompleteAction, CapaVerify, CapaManage,
-        ChangeCreate, ChangeReview, ChangeExecute, ChangeApprove,
-        DocumentCreate, DocumentWrite, DocumentReview, DocumentApprove, DocumentDistribute, DocumentRead,
-        TrainingView, TrainingManage, TrainingComplete, TrainingApprove,
-        ComplaintView, ComplaintCreate, ComplaintInvestigate, ComplaintManage, ComplaintApprove,
-        InternalAuditView, InternalAuditPlan, InternalAuditExecute, InternalAuditRespond, InternalAuditApprove,
-        ExternalAuditView, ExternalAuditCreate, ExternalAuditPrepare, ExternalAuditRespond, ExternalAuditApprove,
-        SupplierAuditView, SupplierAuditPlan, SupplierAuditExecute, SupplierAuditRespond, SupplierAuditApprove,
-        AdministrationManage
+        QualityView,
+        DeviationCreate,
+        DeviationInvestigate,
+        DeviationManage,
+        CapaPlan,
+        CapaCompleteAction,
+        CapaVerify,
+        CapaManage,
+        ChangeCreate,
+        ChangeReview,
+        ChangeExecute,
+        ChangeApprove,
+        DocumentCreate,
+        DocumentWrite,
+        DocumentReview,
+        DocumentApprove,
+        DocumentDistribute,
+        DocumentRead,
+        TrainingView,
+        TrainingManage,
+        TrainingComplete,
+        TrainingApprove,
+        ComplaintView,
+        ComplaintCreate,
+        ComplaintInvestigate,
+        ComplaintManage,
+        ComplaintApprove,
+        InternalAuditView,
+        InternalAuditPlan,
+        InternalAuditExecute,
+        InternalAuditRespond,
+        InternalAuditApprove,
+        ExternalAuditView,
+        ExternalAuditCreate,
+        ExternalAuditPrepare,
+        ExternalAuditRespond,
+        ExternalAuditApprove,
+        SupplierAuditView,
+        SupplierAuditPlan,
+        SupplierAuditExecute,
+        SupplierAuditRespond,
+        SupplierAuditApprove,
+        WorkTrackingView,
+        WorkTrackingCreate,
+        WorkTrackingManage,
+        WorkTrackingVerify,
+        RiskView,
+        RiskCreate,
+        RiskManage,
+        RiskApprove,
+        MbrView,
+        MbrCreate,
+        MbrWrite,
+        MbrReview,
+        MbrApprove,
+        SpecializedView,
+        SpecializedManage,
+        AdministrationManage,
     ];
 }

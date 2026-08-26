@@ -52,6 +52,7 @@ public sealed class SupplierAuditFinding
     public bool CapaRequired { get; private set; }
     public Guid? LinkedCapaId { get; private set; }
     public string Owner { get; private set; } = "";
+    public Guid OwnerUserId { get; private set; }
     public DateTimeOffset ResponseDueAtUtc { get; private set; }
     public string? SupplierResponse { get; private set; }
     public string? Commitment { get; private set; }
@@ -62,13 +63,13 @@ public sealed class SupplierAuditFinding
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? ClosedAtUtc { get; private set; }
 
-    public static SupplierAuditFinding Create(Guid auditId, string number, string title, string description, string reference, SupplierAuditFindingClassification classification, bool capaRequired, Guid? capaId, string owner, DateTimeOffset responseDue, DateTimeOffset now)
+    public static SupplierAuditFinding Create(Guid auditId, string number, string title, string description, string reference, SupplierAuditFindingClassification classification, bool capaRequired, Guid? capaId, Guid ownerUserId, string owner, DateTimeOffset responseDue, DateTimeOffset now)
     {
-        Text(number, nameof(number), 80); Text(title, nameof(title), 240); Text(description, nameof(description), 6000); Text(reference, nameof(reference), 500); Text(owner, nameof(owner), 200);
+        Text(number, nameof(number), 80); Text(title, nameof(title), 240); Text(description, nameof(description), 6000); Text(reference, nameof(reference), 500); Text(owner, nameof(owner), 200); if (ownerUserId == Guid.Empty) throw new ArgumentException("Bulgu sorumlusu zorunludur.");
         if (responseDue <= now) throw new ArgumentException("Tedarikçi cevap hedefi gelecekte olmalıdır.");
         if (classification is SupplierAuditFindingClassification.Critical or SupplierAuditFindingClassification.Major) capaRequired = true;
         if (capaRequired && !capaId.HasValue) throw new InvalidOperationException("DÖF gerekli tedarikçi bulgusu ilişkili M.02 kaydı olmadan oluşturulamaz.");
-        return new() { Id = Guid.CreateVersion7(), SupplierAuditId = auditId, Number = number.Trim(), Title = title.Trim(), Description = description.Trim(), RequirementReference = reference.Trim(), Classification = classification, CapaRequired = capaRequired, LinkedCapaId = capaId, Owner = owner.Trim(), ResponseDueAtUtc = responseDue, Status = SupplierAuditFindingStatus.Open, CreatedAtUtc = now };
+        return new() { Id = Guid.CreateVersion7(), SupplierAuditId = auditId, Number = number.Trim(), Title = title.Trim(), Description = description.Trim(), RequirementReference = reference.Trim(), Classification = classification, CapaRequired = capaRequired, LinkedCapaId = capaId, OwnerUserId = ownerUserId, Owner = owner.Trim(), ResponseDueAtUtc = responseDue, Status = SupplierAuditFindingStatus.Open, CreatedAtUtc = now };
     }
 
     internal void Respond(string response, string commitment, DateTimeOffset due, DateTimeOffset now)
@@ -140,6 +141,11 @@ public sealed class SupplierAudit
     public string LeadAuditor { get; private set; } = "";
     public string LeadAuditorDepartment { get; private set; } = "";
     public string PurchasingOwner { get; private set; } = "";
+    public Guid PurchasingOwnerUserId { get; private set; }
+    public Guid VerifierUserId { get; private set; }
+    public string Verifier { get; private set; } = "";
+    public Guid QualityApproverUserId { get; private set; }
+    public string QualityApprover { get; private set; } = "";
     public DateTimeOffset PlannedStartUtc { get; private set; }
     public DateTimeOffset PlannedEndUtc { get; private set; }
     public string ChecklistVersion { get; private set; } = "";
@@ -157,10 +163,10 @@ public sealed class SupplierAudit
     public IReadOnlyCollection<SupplierAuditFinding> Findings => _findings;
     public IReadOnlyCollection<SupplierAuditInvitation> Invitations => _invitations;
 
-    public static SupplierAudit Create(Guid qualityRecordId, Guid? supplierEvaluationId, string supplierCode, string supplierName, string supplierScope, string materialOrService, string country, string criticality, decimal performance, int openFindings, string scope, string site, Guid auditorId, string auditor, string auditorDepartment, string purchasingOwner, DateTimeOffset start, DateTimeOffset end, string checklistVersion, IEnumerable<(string Category, string Question, string Reference)> questions, DateTimeOffset now)
+    public static SupplierAudit Create(Guid qualityRecordId, Guid? supplierEvaluationId, string supplierCode, string supplierName, string supplierScope, string materialOrService, string country, string criticality, decimal performance, int openFindings, string scope, string site, Guid auditorId, string auditor, string auditorDepartment, Guid purchasingOwnerUserId, string purchasingOwner, Guid verifierUserId, string verifier, Guid qualityApproverUserId, string qualityApprover, DateTimeOffset start, DateTimeOffset end, string checklistVersion, IEnumerable<(string Category, string Question, string Reference)> questions, DateTimeOffset now)
     {
-        if (qualityRecordId == Guid.Empty || auditorId == Guid.Empty) throw new ArgumentException("Kalite kaydı ve baş denetçi zorunludur.");
-        foreach (var (v, n, m) in new[] { (supplierCode, nameof(supplierCode), 80), (supplierName, nameof(supplierName), 240), (supplierScope, nameof(supplierScope), 500), (materialOrService, nameof(materialOrService), 300), (country, nameof(country), 100), (criticality, nameof(criticality), 40), (scope, nameof(scope), 4000), (site, nameof(site), 240), (auditor, nameof(auditor), 200), (auditorDepartment, nameof(auditorDepartment), 160), (purchasingOwner, nameof(purchasingOwner), 200), (checklistVersion, nameof(checklistVersion), 80) }) Text(v, n, m);
+        if (qualityRecordId == Guid.Empty || auditorId == Guid.Empty || purchasingOwnerUserId == Guid.Empty || verifierUserId == Guid.Empty || qualityApproverUserId == Guid.Empty) throw new ArgumentException("Kalite kaydı ve kayıt görevlerinin kullanıcıları zorunludur.");
+        foreach (var (v, n, m) in new[] { (supplierCode, nameof(supplierCode), 80), (supplierName, nameof(supplierName), 240), (supplierScope, nameof(supplierScope), 500), (materialOrService, nameof(materialOrService), 300), (country, nameof(country), 100), (criticality, nameof(criticality), 40), (scope, nameof(scope), 4000), (site, nameof(site), 240), (auditor, nameof(auditor), 200), (auditorDepartment, nameof(auditorDepartment), 160), (purchasingOwner, nameof(purchasingOwner), 200), (verifier, nameof(verifier), 200), (qualityApprover, nameof(qualityApprover), 200), (checklistVersion, nameof(checklistVersion), 80) }) Text(v, n, m);
         if (performance is < 0 or > 100 || openFindings < 0) throw new ArgumentException("Geçmiş performans 0–100 ve açık bulgu sayısı pozitif olmalıdır.");
         if (end <= start) throw new ArgumentException("Denetim bitişi başlangıçtan sonra olmalıdır.");
         var items = questions.Where(x => !string.IsNullOrWhiteSpace(x.Question)).ToArray(); if (items.Length == 0) throw new ArgumentException("En az bir soru listesi maddesi gerekir.");
@@ -168,7 +174,7 @@ public sealed class SupplierAudit
         var risk = Math.Min(100, criticalityPoints + (int)Math.Round((100 - performance) * .35m) + Math.Min(20, openFindings * 4));
         var band = risk >= 75 ? "Kritik" : risk >= 55 ? "Yüksek" : risk >= 30 ? "Orta" : "Düşük";
         var frequency = risk >= 75 ? 12 : risk >= 55 ? 18 : risk >= 30 ? 24 : 36;
-        var audit = new SupplierAudit { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, SupplierEvaluationId = supplierEvaluationId, SupplierCode = supplierCode.Trim(), SupplierName = supplierName.Trim(), SupplierScope = supplierScope.Trim(), MaterialOrService = materialOrService.Trim(), Country = country.Trim(), Criticality = criticality.Trim(), PastPerformanceScore = performance, OpenFindingSnapshot = openFindings, RiskScore = risk, RiskBand = band, RecommendedFrequencyMonths = frequency, Scope = scope.Trim(), Site = site.Trim(), LeadAuditorUserId = auditorId, LeadAuditor = auditor.Trim(), LeadAuditorDepartment = auditorDepartment.Trim(), PurchasingOwner = purchasingOwner.Trim(), PlannedStartUtc = start, PlannedEndUtc = end, ChecklistVersion = checklistVersion.Trim(), QualificationStatus = SupplierQualificationStatus.Active, Status = SupplierAuditStatus.RiskPlan, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
+        var audit = new SupplierAudit { Id = Guid.CreateVersion7(), QualityRecordId = qualityRecordId, SupplierEvaluationId = supplierEvaluationId, SupplierCode = supplierCode.Trim(), SupplierName = supplierName.Trim(), SupplierScope = supplierScope.Trim(), MaterialOrService = materialOrService.Trim(), Country = country.Trim(), Criticality = criticality.Trim(), PastPerformanceScore = performance, OpenFindingSnapshot = openFindings, RiskScore = risk, RiskBand = band, RecommendedFrequencyMonths = frequency, Scope = scope.Trim(), Site = site.Trim(), LeadAuditorUserId = auditorId, LeadAuditor = auditor.Trim(), LeadAuditorDepartment = auditorDepartment.Trim(), PurchasingOwnerUserId = purchasingOwnerUserId, PurchasingOwner = purchasingOwner.Trim(), VerifierUserId = verifierUserId, Verifier = verifier.Trim(), QualityApproverUserId = qualityApproverUserId, QualityApprover = qualityApprover.Trim(), PlannedStartUtc = start, PlannedEndUtc = end, ChecklistVersion = checklistVersion.Trim(), QualificationStatus = SupplierQualificationStatus.Active, Status = SupplierAuditStatus.RiskPlan, CreatedAtUtc = now, UpdatedAtUtc = now, Version = 1 };
         var order = 1; foreach (var item in items) audit._checklist.Add(SupplierAuditChecklistItem.Create(audit.Id, order++, item.Category, item.Question, item.Reference)); return audit;
     }
 

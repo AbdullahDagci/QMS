@@ -1,21 +1,21 @@
 import { alpha, createTheme } from '@mui/material/styles'
 
-const mistBlue = '#5f7f92'
+const controlTeal = '#087f78'
 
 export const theme = createTheme({
   palette: {
     mode: 'light',
-    primary: { main: mistBlue, dark: '#476577', light: '#96afbd' },
-    secondary: { main: '#718f7b', dark: '#557060', light: '#afc4b5' },
-    success: { main: '#3f8f62' },
-    warning: { main: '#b7791f' },
-    error: { main: '#c94b55' },
-    background: { default: '#f4f6f5', paper: '#ffffff' },
-    text: { primary: '#263238', secondary: '#6b7780' },
-    divider: '#e4e7ec',
+    primary: { main: controlTeal, dark: '#075f5b', light: '#51aaa4' },
+    secondary: { main: '#315a9f', dark: '#203f77', light: '#7897c8' },
+    success: { main: '#23845b' },
+    warning: { main: '#b66b16' },
+    error: { main: '#c34250' },
+    background: { default: '#f4f5f0', paper: '#ffffff' },
+    text: { primary: '#172b34', secondary: '#66767b' },
+    divider: '#dfe5e1',
   },
   typography: {
-    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: 'Aptos, "Avenir Next", "Segoe UI", sans-serif',
     h1: { fontWeight: 760, letterSpacing: '-0.035em' },
     h2: { fontWeight: 740, letterSpacing: '-0.025em' },
     h3: { fontWeight: 730, letterSpacing: '-0.02em' },
@@ -27,17 +27,17 @@ export const theme = createTheme({
     MuiCard: {
       styleOverrides: {
         root: {
-          border: '1px solid #e4e7ec',
-          boxShadow: '0 8px 28px rgba(16, 24, 40, 0.045)',
+          border: '1px solid #dde5e1',
+          boxShadow: '0 14px 38px rgba(27, 57, 62, 0.07)',
         },
       },
     },
     MuiButton: {
       defaultProps: { disableElevation: true },
-      styleOverrides: { root: { borderRadius: 10 } },
+      styleOverrides: { root: { borderRadius: 9, minHeight: 40 } },
     },
     MuiPaper: {
-      styleOverrides: { rounded: { borderRadius: 14 } },
+      styleOverrides: { rounded: { borderRadius: 16 } },
     },
     MuiDialogTitle: {
       styleOverrides: {
@@ -52,19 +52,19 @@ export const theme = createTheme({
       },
     },
     MuiTableHead: {
-      styleOverrides: { root: { backgroundColor: '#f8fafc' } },
+      styleOverrides: { root: { backgroundColor: '#f3f7f5' } },
     },
     MuiTableCell: {
       styleOverrides: {
-        head: { color: '#475467', fontSize: '0.75rem', fontWeight: 750 },
-        root: { borderColor: '#eaecf0' },
+        head: { color: '#40565d', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.035em', textTransform: 'uppercase' },
+        root: { borderColor: '#e4e9e6' },
       },
     },
     MuiChip: {
       styleOverrides: { root: { fontWeight: 650 } },
     },
     MuiSkeleton: {
-      styleOverrides: { root: { backgroundColor: alpha(mistBlue, 0.08) } },
+      styleOverrides: { root: { backgroundColor: alpha(controlTeal, 0.08) } },
     },
   },
 })

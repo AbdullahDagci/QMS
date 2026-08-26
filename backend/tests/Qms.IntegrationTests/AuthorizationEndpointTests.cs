@@ -48,6 +48,16 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
     }
 
     [Fact]
+    public async Task ViewerProfile_CannotManageTrainingLookups()
+    {
+        using var client = CreateClient("viewer");
+
+        var response = await client.GetAsync("/api/v1/trainings/lookup-definitions");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ActionOwnerProfile_CannotVerifyCapaAction()
     {
         using var client = CreateClient("action-owner");
@@ -65,6 +75,14 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
 
         var response = await client.GetAsync("/api/v1/admin/access/overview");
 
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ViewerProfile_CannotManageInternalAuditLookups()
+    {
+        using var client = CreateClient("viewer");
+        var response = await client.GetAsync("/api/v1/internal-audits/lookup-definitions");
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
@@ -97,8 +115,17 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
         public Task<AccessOverviewResponse> GetOverviewAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new AccessOverviewResponse([], [], [], [], [], []));
 
+        public Task<DepartmentResponse> CreateDepartmentAsync(CreateDepartmentRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<DepartmentResponse?> UpdateDepartmentAsync(Guid departmentId, UpdateDepartmentRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult<DepartmentResponse?>(null);
+
         public Task<AccessUserResponse?> UpdateUserAsync(Guid userId, UpdateUserAccessRequest request, CancellationToken cancellationToken) =>
             Task.FromResult<AccessUserResponse?>(null);
+
+        public Task<AccessUserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public Task<DelegationResponse> CreateDelegationAsync(CreateDelegationRequest request, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

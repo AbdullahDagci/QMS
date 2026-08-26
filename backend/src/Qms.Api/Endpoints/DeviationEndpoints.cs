@@ -17,6 +17,48 @@ public static class DeviationEndpoints
                 Results.Ok(await service.ListAsync(cancellationToken)))
             .WithName("ListDeviations");
 
+        group.MapGet("/lookups", async (IDeviationService service, CancellationToken ct) =>
+                Results.Ok(await service.GetLookupsAsync(ct)))
+            .WithName("GetDeviationLookups");
+
+        group.MapGet("/types", async (IDeviationService service, CancellationToken ct) =>
+                Results.Ok(await service.ListDeviationTypesAsync(ct)))
+            .RequireAuthorization(QmsPolicies.AdministrationManage)
+            .WithName("ListDeviationTypes");
+
+        group.MapPost("/types", async (CreateDeviationTypeRequest request, IDeviationService service, CancellationToken ct) =>
+            {
+                try { return Results.Created("/api/v1/deviations/types", await service.CreateDeviationTypeAsync(request, ct)); }
+                catch (ArgumentException exception) { return ValidationProblem(exception); }
+            })
+            .RequireAuthorization(QmsPolicies.AdministrationManage)
+            .WithName("CreateDeviationType");
+
+        group.MapPut("/types/{id:guid}", async (Guid id, UpdateDeviationTypeRequest request, IDeviationService service, CancellationToken ct) =>
+            {
+                try
+                {
+                    var result = await service.UpdateDeviationTypeAsync(id, request, ct);
+                    return result is null ? Results.NotFound() : Results.Ok(result);
+                }
+                catch (ArgumentException exception) { return ValidationProblem(exception); }
+            })
+            .RequireAuthorization(QmsPolicies.AdministrationManage)
+            .WithName("UpdateDeviationType");
+
+        group.MapGet("/assignment-rules", async (IDeviationService service, CancellationToken ct) => Results.Ok(await service.ListAssignmentRulesAsync(ct)))
+            .RequireAuthorization(QmsPolicies.AdministrationManage).WithName("ListDeviationAssignmentRules");
+        group.MapPost("/assignment-rules", async (SaveDeviationAssignmentRuleRequest request, IDeviationService service, CancellationToken ct) =>
+            {
+                try { return Results.Created("/api/v1/deviations/assignment-rules", await service.CreateAssignmentRuleAsync(request, ct)); }
+                catch (ArgumentException exception) { return ValidationProblem(exception); }
+            }).RequireAuthorization(QmsPolicies.AdministrationManage).WithName("CreateDeviationAssignmentRule");
+        group.MapPut("/assignment-rules/{id:guid}", async (Guid id, SaveDeviationAssignmentRuleRequest request, IDeviationService service, CancellationToken ct) =>
+            {
+                try { var result = await service.UpdateAssignmentRuleAsync(id, request, ct); return result is null ? Results.NotFound() : Results.Ok(result); }
+                catch (ArgumentException exception) { return ValidationProblem(exception); }
+            }).RequireAuthorization(QmsPolicies.AdministrationManage).WithName("UpdateDeviationAssignmentRule");
+
         group.MapPost("/search", async (
                 DeviationSearchRequest request,
                 IDeviationService service,
@@ -52,6 +94,29 @@ public static class DeviationEndpoints
                 return deviation is null ? Results.NotFound() : Results.Ok(deviation);
             })
             .WithName("GetDeviationDetails");
+
+        group.MapGet("/{id:guid}/final-report", async (
+                Guid id,
+                IDeviationService service,
+                IDeviationFinalReportService reportService,
+                HttpContext httpContext,
+                CancellationToken cancellationToken) =>
+            {
+                try
+                {
+                    var details = await service.GetDetailsAsync(id, cancellationToken);
+                    if (details is null) return Results.NotFound();
+                    var report = await reportService.EnsureGeneratedAsync(details, cancellationToken);
+                    httpContext.Response.Headers["X-Document-SHA256"] = report.Sha256;
+                    httpContext.Response.Headers["Cache-Control"] = "private, no-store";
+                    return Results.File(report.Content, "application/pdf", report.FileName, enableRangeProcessing: true);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nihai rapor kullanılamıyor", detail: exception.Message);
+                }
+            })
+            .WithName("DownloadDeviationFinalReport");
 
         group.MapPost("/", CreateAsync)
             .RequireAuthorization(QmsPolicies.DeviationCreate)

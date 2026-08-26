@@ -11,6 +11,7 @@ public sealed class ChangeImplementationAction
     public string Category { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public string Owner { get; private set; } = string.Empty;
+    public Guid? OwnerUserId { get; private set; }
     public DateTimeOffset TargetDateUtc { get; private set; }
     public bool IsBlocking { get; private set; }
     public ChangeImplementationActionStatus Status { get; private set; }
@@ -19,11 +20,12 @@ public sealed class ChangeImplementationAction
     public DateTimeOffset? CompletedAtUtc { get; private set; }
     public DateTimeOffset? VerifiedAtUtc { get; private set; }
 
-    internal static ChangeImplementationAction Create(Guid changeControlId, string category, string description, string owner, DateTimeOffset targetDateUtc, bool isBlocking, DateTimeOffset now)
+    internal static ChangeImplementationAction Create(Guid changeControlId, string category, string description, Guid ownerUserId, string owner, DateTimeOffset targetDateUtc, bool isBlocking, DateTimeOffset now)
     {
         Text(category, nameof(category), 80); Text(description, nameof(description), 2000); Text(owner, nameof(owner), 160);
         if (targetDateUtc <= now) throw new ArgumentException("Uygulama aksiyonu hedef tarihi gelecekte olmalıdır.");
-        return new ChangeImplementationAction { Id = Guid.CreateVersion7(), ChangeControlId = changeControlId, Category = category.Trim(), Description = description.Trim(), Owner = owner.Trim(), TargetDateUtc = targetDateUtc, IsBlocking = isBlocking, Status = ChangeImplementationActionStatus.Planned };
+        if (ownerUserId == Guid.Empty) throw new ArgumentException("Aksiyon sorumlusu zorunludur.");
+        return new ChangeImplementationAction { Id = Guid.CreateVersion7(), ChangeControlId = changeControlId, Category = category.Trim(), Description = description.Trim(), OwnerUserId = ownerUserId, Owner = owner.Trim(), TargetDateUtc = targetDateUtc, IsBlocking = isBlocking, Status = ChangeImplementationActionStatus.Planned };
     }
 
     internal void RequestCompletion(string evidence, DateTimeOffset now)

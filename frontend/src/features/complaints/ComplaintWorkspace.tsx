@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import {
@@ -10,6 +10,7 @@ import {
   ManageSearchRounded,
   MarkEmailReadRounded,
   ScienceRounded,
+  SettingsRounded,
   WarningAmberRounded,
 } from "@mui/icons-material";
 import {
@@ -47,12 +48,18 @@ import {
   completeComplaintImpact,
   completeComplaintInvestigation,
   createComplaint,
+  createComplaintLookupDefinition,
   decideComplaintCapa,
+  downloadComplaintFinalReport,
   getComplaintDetails,
+  getComplaintOptions,
+  getComplaintLookupDefinitions,
   searchComplaints,
   transitionComplaint,
+  updateComplaintLookupDefinition,
   type ComplaintDetails,
   type ComplaintListItem,
+  type ComplaintLookupDefinition,
   type CreateComplaintInput,
 } from "../../api/complaints";
 import { AdvancedFilterButton } from "../../components/AdvancedFilterPanel";
@@ -129,6 +136,7 @@ export function ComplaintWorkspace() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [createOpen, setCreateOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const { can } = useAuth();
   const columnFilters = useMemo(
     () => toComplaintColumnFilters(filters),
@@ -150,6 +158,22 @@ export function ComplaintWorkspace() {
     placeholderData: (p) => p,
     retry: false,
   });
+  const optionsQuery = useQuery({
+    queryKey: ["complaint-options"],
+    queryFn: ({ signal }) => getComplaintOptions(signal),
+    retry: false,
+  });
+  const lookupNames = useMemo(
+    () => ({
+      complaintTypes: new Map(
+        (optionsQuery.data?.complaintTypes ?? []).map((x) => [x.code, x.name]),
+      ),
+      countries: new Map(
+        (optionsQuery.data?.countries ?? []).map((x) => [x.code, x.name]),
+      ),
+    }),
+    [optionsQuery.data],
+  );
   const sort = (field: string) => {
     if (field === sortBy) setDirection((x) => (x === "asc" ? "desc" : "asc"));
     else {
@@ -163,7 +187,7 @@ export function ComplaintWorkspace() {
   const pv = items.filter((x) => x.suspectedAdverseEvent).length;
   const trend = items.filter((x) => x.trendFlagged).length;
   return (
-    <Box component="section">
+    <Box component="section" className="module-unified-page">
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -187,6 +211,15 @@ export function ComplaintWorkspace() {
         </Box>
         <Stack direction="row" spacing={1.2}>
           <ModuleInfoButton module="M.06" onClick={() => setGuideOpen(true)} />
+          {can(Permissions.administrationManage) && (
+            <Button
+              variant="outlined"
+              startIcon={<SettingsRounded />}
+              onClick={() => setLookupOpen(true)}
+            >
+              Şikâyet tanımları
+            </Button>
+          )}
           {can(Permissions.complaintCreate) && (
             <Button
               variant="contained"
@@ -226,6 +259,7 @@ export function ComplaintWorkspace() {
         />
       </Box>
       <Stack
+        className="module-list-toolbar"
         direction="row"
         spacing={1.5}
         sx={{ mt: 2.5, alignItems: "center" }}
@@ -311,6 +345,13 @@ export function ComplaintWorkspace() {
                 <ComplaintRow
                   key={item.id}
                   item={item}
+                  complaintTypeName={
+                    lookupNames.complaintTypes.get(item.complaintType) ??
+                    item.complaintType
+                  }
+                  countryName={
+                    lookupNames.countries.get(item.country) ?? item.country
+                  }
                   open={() => setParams({ open: item.id })}
                 />
               ))}
@@ -363,6 +404,10 @@ export function ComplaintWorkspace() {
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
       />
+      <ComplaintLookupDialog
+        open={lookupOpen}
+        onClose={() => setLookupOpen(false)}
+      />
     </Box>
   );
 }
@@ -385,6 +430,204 @@ function Kpi({
         <Typography variant="overline">{label}</Typography>
         <Typography variant="h4">{String(value)}</Typography>
       </Box>
+    </Paper>
+  );
+}
+
+const complaintLookupCategories = [
+  { value: "Channel", label: "Bildirim kanalı" },
+  { value: "Country", label: "Ülke" },
+  { value: "ComplaintType", label: "Şikâyet türü" },
+];
+function ComplaintLookupDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const [category, setCategory] = useState("Channel");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [sortOrder, setSortOrder] = useState(100);
+  const query = useQuery({
+    queryKey: ["complaint-lookup-definitions"],
+    queryFn: getComplaintLookupDefinitions,
+    enabled: open,
+    retry: false,
+  });
+  const refresh = async () => {
+    await client.invalidateQueries({
+      queryKey: ["complaint-lookup-definitions"],
+    });
+    await client.invalidateQueries({ queryKey: ["complaint-options"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      createComplaintLookupDefinition({ category, code, name, sortOrder }),
+    onSuccess: async () => {
+      setCode("");
+      setName("");
+      await refresh();
+    },
+  });
+  const update = useMutation({
+    mutationFn: (x: {
+      id: string;
+      name: string;
+      sortOrder: number;
+      isActive: boolean;
+    }) => updateComplaintLookupDefinition(x.id, x),
+    onSuccess: refresh,
+  });
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <ModalHeader onClose={onClose}>
+        <Box>
+          <Typography variant="overline">M.06 · YÖNETİLEN LOOKUP</Typography>
+          <Typography variant="h5">Şikâyet tanımları</Typography>
+          <Typography color="text.secondary">
+            Değişmez kodlar geçmiş kayıtlarda snapshot olarak korunur; görünen
+            ad ve aktiflik yalnız yeni seçimleri yönetir.
+          </Typography>
+        </Box>
+      </ModalHeader>
+      <DialogContent dividers>
+        {(query.isError || create.isError || update.isError) && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {query.error?.message ??
+              create.error?.message ??
+              update.error?.message}
+          </Alert>
+        )}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+            <Box sx={{ minWidth: 180 }}>
+              <SearchableSelect
+                label="Kategori"
+                value={category}
+                options={complaintLookupCategories}
+                onChange={(v) => setCategory(v ?? "Channel")}
+                size="medium"
+              />
+            </Box>
+            <TextField
+              required
+              label="Değişmez kod"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <TextField
+              required
+              fullWidth
+              label="Görünen ad"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <TextField
+              type="number"
+              label="Sıra"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              sx={{ width: 100 }}
+            />
+            <Button
+              variant="contained"
+              disabled={!code.trim() || !name.trim() || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              Ekle
+            </Button>
+          </Stack>
+        </Paper>
+        <Stack spacing={1}>
+          {query.data?.map((item) => (
+            <ComplaintLookupRow
+              key={item.id}
+              item={item}
+              saving={update.isPending}
+              onSave={(nextName, nextSort, active) =>
+                update.mutate({
+                  id: item.id,
+                  name: nextName,
+                  sortOrder: nextSort,
+                  isActive: active,
+                })
+              }
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
+          Kapat
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+function ComplaintLookupRow({
+  item,
+  saving,
+  onSave,
+}: {
+  item: ComplaintLookupDefinition;
+  saving: boolean;
+  onSave: (name: string, sortOrder: number, isActive: boolean) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [sortOrder, setSortOrder] = useState(item.sortOrder);
+  const [isActive, setActive] = useState(item.isActive);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        sx={{ alignItems: { md: "center" } }}
+      >
+        <Chip
+          size="small"
+          label={
+            complaintLookupCategories.find((x) => x.value === item.category)
+              ?.label ?? item.category
+          }
+        />
+        <Typography sx={{ minWidth: 145, fontFamily: "monospace" }}>
+          {item.code}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          label="Görünen ad"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <TextField
+          size="small"
+          type="number"
+          label="Sıra"
+          value={sortOrder}
+          onChange={(e) => setSortOrder(Number(e.target.value))}
+          sx={{ width: 90 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={isActive}
+              onChange={(e) => setActive(e.target.checked)}
+            />
+          }
+          label="Aktif"
+        />
+        <Button
+          variant="outlined"
+          disabled={!name.trim() || saving}
+          onClick={() => onSave(name, sortOrder, isActive)}
+        >
+          Kaydet
+        </Button>
+      </Stack>
     </Paper>
   );
 }
@@ -415,9 +658,13 @@ function Sort({
 }
 function ComplaintRow({
   item,
+  complaintTypeName,
+  countryName,
   open,
 }: {
   item: ComplaintListItem;
+  complaintTypeName: string;
+  countryName: string;
   open: () => void;
 }) {
   const overdue =
@@ -429,12 +676,12 @@ function ComplaintRow({
         <Typography sx={{ fontWeight: 800, color: "primary.main" }}>
           {item.recordNumber}
         </Typography>
-        <Typography variant="caption">{item.complaintType}</Typography>
+        <Typography variant="caption">{complaintTypeName}</Typography>
       </TableCell>
       <TableCell>
         <Typography sx={{ fontWeight: 730 }}>{item.customerName}</Typography>
         <Typography variant="caption" color="text.secondary">
-          {item.country}
+          {countryName}
         </Typography>
       </TableCell>
       <TableCell>
@@ -509,14 +756,14 @@ function CreateComplaintDialog({
       .toISOString()
       .slice(0, 16);
   const [form, setForm] = useState<CreateComplaintInput>({
-    channel: "E-posta",
+    channel: "",
     customerName: "",
-    country: "Türkiye",
+    country: "",
     product: "",
     batchNumber: "",
     eventAtUtc: local(new Date(now.getTime() - 86400000)),
     receivedAtUtc: local(now),
-    complaintType: "Ürün kalitesi",
+    complaintType: "",
     description: "",
     severity: "Minor",
     hasHealthImpact: false,
@@ -524,11 +771,31 @@ function CreateComplaintDialog({
     sampleExpected: false,
     returnExpected: false,
     attachmentSummary: "",
-    owner: "Kalite Güvence",
+    ownerUserId: "",
     preliminaryResponseDueAtUtc: local(new Date(now.getTime() + 3 * 86400000)),
     finalResponseDueAtUtc: local(new Date(now.getTime() + 30 * 86400000)),
-    investigationDepartments: ["Kalite Güvence"],
+    investigationDepartmentIds: [],
   });
+  const optionsQuery = useQuery({
+    queryKey: ["complaint-options"],
+    queryFn: ({ signal }) => getComplaintOptions(signal),
+    enabled: open,
+  });
+  const options = optionsQuery.data;
+  useEffect(() => {
+    if (!options) return;
+    setForm((current) => ({
+      ...current,
+      channel: current.channel || options.channels[0]?.code || "",
+      country: current.country || options.countries[0]?.code || "",
+      complaintType:
+        current.complaintType || options.complaintTypes[0]?.code || "",
+      ownerUserId: current.ownerUserId || options.owners[0]?.id || "",
+      investigationDepartmentIds: current.investigationDepartmentIds.length
+        ? current.investigationDepartmentIds
+        : options.departments.slice(0, 1).map((x) => x.id),
+    }));
+  }, [options]);
   const mutation = useMutation({
     mutationFn: createComplaint,
     onSuccess: (d) => {
@@ -544,8 +811,8 @@ function CreateComplaintDialog({
     form.customerName.trim() &&
     form.product.trim() &&
     form.description.trim() &&
-    form.owner.trim() &&
-    form.investigationDepartments.length > 0;
+    form.ownerUserId &&
+    form.investigationDepartmentIds.length > 0;
   const submit = () =>
     mutation.mutate({
       ...form,
@@ -574,28 +841,33 @@ function CreateComplaintDialog({
         <Box className="form-grid two-columns">
           <SearchableSelect
             label="Kanal"
+            required
             value={form.channel}
-            options={[
-              "E-posta",
-              "Telefon",
-              "Web formu",
-              "Distribütör",
-              "Otorite",
-            ].map((value) => ({ value, label: value }))}
+            options={(options?.channels ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
             onChange={(v) => set("channel", v ?? "")}
           />
           <TextField
             label="Müşteri"
+            required
             value={form.customerName}
             onChange={(e) => set("customerName", e.target.value)}
           />
-          <TextField
+          <SearchableSelect
             label="Ülke"
+            required
             value={form.country}
-            onChange={(e) => set("country", e.target.value)}
+            options={(options?.countries ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
+            onChange={(v) => set("country", v ?? "")}
           />
           <TextField
             label="Ürün"
+            required
             value={form.product}
             onChange={(e) => set("product", e.target.value)}
           />
@@ -606,18 +878,17 @@ function CreateComplaintDialog({
           />
           <SearchableSelect
             label="Şikâyet türü"
+            required
             value={form.complaintType}
-            options={[
-              "Ürün kalitesi",
-              "Ambalaj / etiket",
-              "Teslimat",
-              "Tıbbi bilgi",
-              "Hizmet",
-            ].map((value) => ({ value, label: value }))}
+            options={(options?.complaintTypes ?? []).map((x) => ({
+              value: x.code,
+              label: x.name,
+            }))}
             onChange={(v) => set("complaintType", v ?? "")}
           />
           <SearchableSelect
             label="Önem derecesi"
+            required
             value={form.severity}
             options={[
               { value: "Minor", label: "Minör" },
@@ -626,14 +897,20 @@ function CreateComplaintDialog({
             ]}
             onChange={(v) => set("severity", v ?? "Minor")}
           />
-          <TextField
+          <SearchableSelect
             label="Sorumlu"
-            value={form.owner}
-            onChange={(e) => set("owner", e.target.value)}
+            required
+            value={form.ownerUserId}
+            options={(options?.owners ?? []).map((x) => ({
+              value: x.id,
+              label: `${x.name}${x.department ? ` · ${x.department}` : ""}`,
+            }))}
+            onChange={(v) => set("ownerUserId", v ?? "")}
           />
           <TextField
             type="datetime-local"
             label="Olay tarihi"
+            required
             value={form.eventAtUtc}
             onChange={(e) => set("eventAtUtc", e.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
@@ -641,6 +918,7 @@ function CreateComplaintDialog({
           <TextField
             type="datetime-local"
             label="Alınma tarihi"
+            required
             value={form.receivedAtUtc}
             onChange={(e) => set("receivedAtUtc", e.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
@@ -648,6 +926,7 @@ function CreateComplaintDialog({
           <TextField
             type="datetime-local"
             label="Ön yanıt hedefi"
+            required
             value={form.preliminaryResponseDueAtUtc}
             onChange={(e) => set("preliminaryResponseDueAtUtc", e.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
@@ -655,6 +934,7 @@ function CreateComplaintDialog({
           <TextField
             type="datetime-local"
             label="Nihai yanıt hedefi"
+            required
             value={form.finalResponseDueAtUtc}
             onChange={(e) => set("finalResponseDueAtUtc", e.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
@@ -663,24 +943,26 @@ function CreateComplaintDialog({
             multiline
             minRows={3}
             label="Şikâyet açıklaması"
+            required
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
             sx={{ gridColumn: "1/-1" }}
           />
           <Autocomplete
             multiple
-            options={[
-              "Kalite Güvence",
-              "Kalite Kontrol",
-              "Üretim",
-              "Depo",
-              "Lojistik",
-              "Ruhsatlandırma",
-            ]}
-            value={form.investigationDepartments}
-            onChange={(_, v) => set("investigationDepartments", v)}
+            options={options?.departments ?? []}
+            getOptionLabel={(x) => `${x.name} · ${x.investigator}`}
+            value={(options?.departments ?? []).filter((x) =>
+              form.investigationDepartmentIds.includes(x.id),
+            )}
+            onChange={(_, v) =>
+              set(
+                "investigationDepartmentIds",
+                v.map((x) => x.id),
+              )
+            }
             renderInput={(p) => (
-              <TextField {...p} label="Paralel araştırma bölümleri" />
+              <TextField {...p} label="Paralel araştırma bölümleri" required />
             )}
             sx={{ gridColumn: "1/-1" }}
           />
@@ -789,6 +1071,19 @@ function ComplaintDetailsDialog({
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
+              {query.data.record.status === "Closed" && (
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    void downloadComplaintFinalReport(
+                      query.data!.record.id,
+                      query.data!.record.recordNumber,
+                    )
+                  }
+                >
+                  Nihai PDF
+                </Button>
+              )}
               <Chip
                 color={
                   query.data.record.severity === "Critical"
@@ -884,7 +1179,10 @@ function ComplaintDetailsDialog({
           <ComplaintActions
             details={query.data}
             update={update}
-            canManage={can(Permissions.complaintManage)}
+            canManage={
+              can(Permissions.complaintManage) ||
+              can(Permissions.complaintApprove)
+            }
           />
         </>
       )}
@@ -1192,12 +1490,16 @@ function ResponseCard({
   update: (d: ComplaintDetails) => void;
   canApprove: boolean;
 }) {
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
   const mutation = useMutation({
     mutationFn: () =>
       approveComplaintResponse(
         details.record.id,
         response.id,
         details.record.version,
+        signaturePassword,
+        signatureAccepted,
       ),
     onSuccess: update,
   });
@@ -1236,15 +1538,33 @@ function ResponseCard({
         </Typography>
       )}
       {response.status === "Draft" && canApprove && (
-        <Button
-          variant="outlined"
-          color="success"
-          sx={{ mt: 2 }}
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate()}
-        >
-          Bu sürümü onayla
-        </Button>
+        <Stack spacing={1.2} sx={{ mt: 2 }}>
+          <TextField
+            type="password"
+            label="E-imza parolası"
+            value={signaturePassword}
+            onChange={(e) => setSignaturePassword(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={signatureAccepted}
+                onChange={(e) => setSignatureAccepted(e.target.checked)}
+              />
+            }
+            label="Yanıt içeriğini elektronik imzamla onaylıyorum"
+          />
+          <Button
+            variant="outlined"
+            color="success"
+            disabled={
+              mutation.isPending || !signaturePassword || !signatureAccepted
+            }
+            onClick={() => mutation.mutate()}
+          >
+            Bu sürümü e-imzala ve onayla
+          </Button>
+        </Stack>
       )}
     </Paper>
   );
@@ -1321,7 +1641,13 @@ function ComplaintActions({
   const [impact, setImpact] = useState("");
   const [root, setRoot] = useState("");
   const [capa, setCapa] = useState(true);
-  const [owner, setOwner] = useState(details.record.owner);
+  const [owner, setOwner] = useState(details.record.ownerUserId);
+  const [signaturePassword, setSignaturePassword] = useState("");
+  const [signatureAccepted, setSignatureAccepted] = useState(false);
+  const optionsQuery = useQuery({
+    queryKey: ["complaint-options"],
+    queryFn: ({ signal }) => getComplaintOptions(signal),
+  });
   const [target, setTarget] = useState(
     new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   );
@@ -1348,6 +1674,8 @@ function ComplaintActions({
         details.record.version,
         action,
         note,
+        action === "close" ? signaturePassword : undefined,
+        action === "close" ? signatureAccepted : false,
       );
     },
     onSuccess: (d) => {
@@ -1416,11 +1744,14 @@ function ComplaintActions({
               />
               {capa && (
                 <>
-                  <TextField
-                    size="small"
+                  <SearchableSelect
                     label="DÖF sorumlusu"
                     value={owner}
-                    onChange={(e) => setOwner(e.target.value)}
+                    options={(optionsQuery.data?.owners ?? []).map((x) => ({
+                      value: x.id,
+                      label: `${x.name}${x.department ? ` · ${x.department}` : ""}`,
+                    }))}
+                    onChange={(v) => setOwner(v ?? "")}
                   />
                   <TextField
                     size="small"
@@ -1453,17 +1784,43 @@ function ComplaintActions({
             </Box>
             <Stack direction="row" spacing={1}>
               {transition.noteRequired && (
-                <TextField
-                  size="small"
-                  label="Kapanış gerekçesi"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
+                <Stack spacing={1}>
+                  <TextField
+                    size="small"
+                    label="Kapanış gerekçesi"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                  {transition.code === "close" && (
+                    <>
+                      <TextField
+                        size="small"
+                        type="password"
+                        label="E-imza parolası"
+                        value={signaturePassword}
+                        onChange={(e) => setSignaturePassword(e.target.value)}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={signatureAccepted}
+                            onChange={(e) =>
+                              setSignatureAccepted(e.target.checked)
+                            }
+                          />
+                        }
+                        label="Kapanışı elektronik imzamla onaylıyorum"
+                      />
+                    </>
+                  )}
+                </Stack>
               )}
               <Button
                 variant="contained"
                 disabled={
                   (transition.noteRequired && !note.trim()) ||
+                  (transition.code === "close" &&
+                    (!signaturePassword || !signatureAccepted)) ||
                   mutation.isPending
                 }
                 onClick={() => mutation.mutate(transition.code)}

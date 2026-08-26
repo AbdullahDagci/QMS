@@ -16,6 +16,7 @@ export interface TrainingListItem {
   recordNumber: string;
   employeeUserId: string;
   employeeName: string;
+  positionId: string;
   position: string;
   courseCode: string;
   courseTitle: string;
@@ -78,9 +79,12 @@ export interface TrainingDetails {
     label: string;
     noteRequired: boolean;
   }>;
+  signatures: Array<{id:string;recordVersion:number;signerUserId:string;signerName:string;meaning:string;signedAtUtc:string;contentHash:string;comment:string|null}>;
+  actionableTaskRoles: string[];
 }
 export interface TrainingMatrixRule {
   id: string;
+  positionId: string;
   position: string;
   courseCode: string;
   courseTitle: string;
@@ -95,7 +99,7 @@ export interface TrainingMatrixRule {
   effectiveAtUtc: string;
 }
 export interface TrainingOptions {
-  employees: Array<{ id: string; displayName: string; position: string }>;
+  employees: Array<{ id: string; displayName: string; positionId: string; position: string }>;
   documents: Array<{
     id: string;
     revisionId: string;
@@ -103,14 +107,16 @@ export interface TrainingOptions {
     title: string;
     revision: string;
   }>;
-  positions: string[];
+  positions: Array<{id:string;code:string;name:string;departmentName:string|null}>;
+  assessmentModes: Array<{code:string;name:string}>;
+  deliveryMethods: Array<{code:string;name:string}>;
 }
 export interface CreateTrainingInput {
   matrixRuleId?: string | null;
   controlledDocumentId?: string | null;
   documentRevisionId?: string | null;
   employeeUserId: string;
-  position: string;
+  positionId: string;
   courseCode: string;
   courseTitle: string;
   assessmentMode: string;
@@ -159,6 +165,7 @@ export const searchTrainings = (
   });
 export const getTrainingDetails = (id: string, signal?: AbortSignal) =>
   request<TrainingDetails>(`/api/v1/trainings/${id}/details`, { signal });
+export async function downloadTrainingFinalReport(id:string):Promise<{blob:Blob;fileName:string;sha256:string|null}>{const response=await qmsFetch(`/api/v1/trainings/${id}/final-report`);if(!response.ok){const p=await response.json().catch(()=>null) as {detail?:string}|null;throw new Error(p?.detail??`Rapor alınamadı (${response.status})`);}const disposition=response.headers.get("content-disposition")??"";const encoded=/filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];const plain=/filename="?([^";]+)"?/i.exec(disposition)?.[1];return{blob:await response.blob(),fileName:encoded?decodeURIComponent(encoded):(plain??"egitim-nihai-kayit.pdf"),sha256:response.headers.get("x-content-sha256")};}
 export const getTrainingOptions = (signal?: AbortSignal) =>
   request<TrainingOptions>("/api/v1/trainings/options", { signal });
 export const getTrainingMatrix = (signal?: AbortSignal) =>
@@ -170,7 +177,7 @@ export const createTraining = (input: CreateTrainingInput) =>
     body: JSON.stringify(input),
   });
 export const createTrainingMatrix = (input: {
-  position: string;
+  positionId: string;
   courseCode: string;
   courseTitle: string;
   controlledDocumentId: string | null;
@@ -191,21 +198,25 @@ export const transitionTraining = (
   expectedVersion: number,
   transition: string,
   note?: string,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
 ) =>
   request<TrainingDetails>(`/api/v1/trainings/${id}/transitions`, {
     method: "POST",
     headers: json,
-    body: JSON.stringify({ expectedVersion, transition, note }),
+    body: JSON.stringify({ expectedVersion, transition, note, signaturePassword, signatureMeaningAccepted }),
   });
 export const acknowledgeTraining = (
   id: string,
   expectedVersion: number,
   signatureMeaning: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<TrainingDetails>(`/api/v1/trainings/${id}/acknowledge`, {
     method: "POST",
     headers: json,
-    body: JSON.stringify({ expectedVersion, signatureMeaning }),
+    body: JSON.stringify({ expectedVersion, signatureMeaning, signaturePassword, signatureMeaningAccepted }),
   });
 export const recordTrainingAssessment = (
   id: string,
@@ -213,9 +224,15 @@ export const recordTrainingAssessment = (
   score: number,
   practicalPassed: boolean,
   evidence: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<TrainingDetails>(`/api/v1/trainings/${id}/assessment`, {
     method: "POST",
     headers: json,
-    body: JSON.stringify({ expectedVersion, score, practicalPassed, evidence }),
+    body: JSON.stringify({ expectedVersion, score, practicalPassed, evidence, signaturePassword, signatureMeaningAccepted }),
   });
+export interface TrainingLookupDefinition{id:string;category:string;code:string;name:string;sortOrder:number;isActive:boolean}
+export const listTrainingLookupDefinitions=(signal?:AbortSignal)=>request<TrainingLookupDefinition[]>("/api/v1/trainings/lookup-definitions",{signal});
+export const createTrainingLookupDefinition=(input:{category:string;code:string;name:string;sortOrder:number})=>request<TrainingLookupDefinition>("/api/v1/trainings/lookup-definitions",{method:"POST",headers:json,body:JSON.stringify(input)});
+export const updateTrainingLookupDefinition=(id:string,input:{name:string;sortOrder:number;isActive:boolean})=>request<TrainingLookupDefinition>(`/api/v1/trainings/lookup-definitions/${id}`,{method:"PUT",headers:json,body:JSON.stringify(input)});

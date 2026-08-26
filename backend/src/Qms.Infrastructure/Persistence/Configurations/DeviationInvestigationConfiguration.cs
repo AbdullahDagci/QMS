@@ -18,6 +18,8 @@ public sealed class DeviationInvestigationConfiguration : IEntityTypeConfigurati
         builder.Property(investigation => investigation.RootCauseCategory).HasMaxLength(120).IsRequired();
         builder.Property(investigation => investigation.RootCauseDescription).HasMaxLength(4000).IsRequired();
         builder.Property(investigation => investigation.Conclusion).HasMaxLength(4000).IsRequired();
+        builder.Property(investigation => investigation.InvestigatorNameSnapshot).HasMaxLength(200).IsRequired();
+        builder.Property(investigation => investigation.InvestigatorDepartmentSnapshot).HasMaxLength(160).IsRequired();
         builder.HasIndex(investigation => new { investigation.DeviationId, investigation.CompletedAtUtc });
     }
 }

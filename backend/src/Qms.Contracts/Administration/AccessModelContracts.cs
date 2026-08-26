@@ -16,5 +16,8 @@ public sealed record DelegationResponse(Guid Id, Guid DelegatorUserId, string De
 public sealed record WorkflowAssignmentResponse(Guid Id, string AggregateType, Guid AggregateId, string TaskRole, Guid AssignedUserId, string AssignedUserName, Guid? AssignedDepartmentId, string? DepartmentName, string Status, DateTimeOffset AssignedAtUtc, DateTimeOffset? DueAtUtc, DateTimeOffset? CompletedAtUtc);
 
 public sealed record UpdateUserAccessRequest(Guid? DepartmentId, IReadOnlyList<string> Roles, IReadOnlyList<Guid> PositionIds, bool IsActive);
+public sealed record CreateUserRequest(string DisplayName, string Email, string Password, Guid DepartmentId, IReadOnlyList<string> Roles, IReadOnlyList<Guid> PositionIds);
+public sealed record CreateDepartmentRequest(string Code, string Name, Guid? ManagerUserId);
+public sealed record UpdateDepartmentRequest(string Name, Guid? ManagerUserId, bool IsActive);
 public sealed record CreateDelegationRequest(Guid DelegatorUserId, Guid DelegateUserId, string Scope, string Reason, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc);
 public sealed record CreateWorkflowAssignmentRequest(string AggregateType, Guid AggregateId, string TaskRole, Guid AssignedUserId, Guid? AssignedDepartmentId, DateTimeOffset? DueAtUtc);

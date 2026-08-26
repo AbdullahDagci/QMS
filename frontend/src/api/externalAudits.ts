@@ -103,6 +103,8 @@ export interface ExternalAuditDetails {
     reason: string | null;
     payload?: Record<string, unknown>;
   }>;
+  signatures: Array<{id:string;recordVersion:number;signerUserId:string;signer:string;meaning:string;signedAtUtc:string;contentHash:string;comment:string|null}>;
+  actionableTaskRoles: string[];
   availableTransitions: Array<{
     code: string;
     label: string;
@@ -118,6 +120,7 @@ export interface CreateExternalAuditInput {
   officialReference: string;
   scope: string;
   site: string;
+  ownerUserId: string;
   owner: string;
   notifiedAtUtc: string;
   plannedStartUtc: string;
@@ -132,6 +135,16 @@ export interface CreateExternalAuditInput {
     confidentiality: string;
   }>;
 }
+export interface ExternalAuditOptions {
+  owners: Array<{ id: string; name: string; department: string | null }>;
+  authorizedClosers: Array<{ id: string; name: string; department: string | null }>;
+  controlledDocuments: Array<{ id: string; code: string; title: string }>;
+  auditKinds: Array<{ code: string; name: string }>;
+  countries: Array<{ code: string; name: string }>;
+  confidentialities: Array<{ code: string; name: string }>;
+  findingClassifications: Array<{ code: string; name: string }>;
+}
+export interface ExternalAuditLookupDefinition {id:string;category:string;code:string;name:string;sortOrder:number;isActive:boolean}
 const headers = { "Content-Type": "application/json" };
 async function request<T>(url: string, init?: RequestInit) {
   const r = await qmsFetch(url, init);
@@ -162,6 +175,12 @@ export const getExternalAuditDetails = (id: string, signal?: AbortSignal) =>
   request<ExternalAuditDetails>(`/api/v1/external-audits/${id}/details`, {
     signal,
   });
+export const getExternalAuditOptions = (signal?: AbortSignal) =>
+  request<ExternalAuditOptions>("/api/v1/external-audits/options", { signal });
+export const getExternalAuditLookupDefinitions=()=>request<ExternalAuditLookupDefinition[]>("/api/v1/external-audits/lookups");
+export const createExternalAuditLookupDefinition=(input:{category:string;code:string;name:string;sortOrder:number})=>request<ExternalAuditLookupDefinition>("/api/v1/external-audits/lookups",{method:"POST",headers,body:JSON.stringify(input)});
+export const updateExternalAuditLookupDefinition=(id:string,input:{name:string;sortOrder:number;isActive:boolean})=>request<ExternalAuditLookupDefinition>(`/api/v1/external-audits/lookups/${id}`,{method:"PUT",headers,body:JSON.stringify(input)});
+export async function downloadExternalAuditFinalReport(id:string){const response=await qmsFetch(`/api/v1/external-audits/${id}/final-report`);if(!response.ok)throw new Error("Nihai dış denetim PDF'i indirilemedi.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`dis-denetim-${id}.pdf`;a.click();URL.revokeObjectURL(url);}
 export const createExternalAudit = (input: CreateExternalAuditInput) =>
   request<ExternalAuditDetails>("/api/v1/external-audits", {
     method: "POST",
@@ -173,11 +192,13 @@ export const transitionExternalAudit = (
   expectedVersion: number,
   transition: string,
   note?: string,
+  signaturePassword?: string,
+  signatureMeaningAccepted = false,
 ) =>
   request<ExternalAuditDetails>(`/api/v1/external-audits/${id}/transitions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ expectedVersion, transition, note }),
+    body: JSON.stringify({ expectedVersion, transition, note, signaturePassword, signatureMeaningAccepted }),
   });
 export const exportExternalAuditDocument = (
   id: string,
@@ -204,6 +225,7 @@ export const addExternalAuditFinding = (
     officialReference: string;
     classification: string;
     capaRequired: boolean;
+    ownerUserId: string;
     owner: string;
     responseDueAtUtc: string;
   },
@@ -239,13 +261,15 @@ export const closeExternalAuditFinding = (
   findingId: string,
   expectedVersion: number,
   verificationNote: string,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<ExternalAuditDetails>(
     `/api/v1/external-audits/${id}/findings/${findingId}/close`,
     {
       method: "POST",
       headers,
-      body: JSON.stringify({ expectedVersion, verificationNote }),
+      body: JSON.stringify({ expectedVersion, verificationNote, signaturePassword, signatureMeaningAccepted }),
     },
   );
 export const recordExternalAuditClosureLetter = (
@@ -255,6 +279,8 @@ export const recordExternalAuditClosureLetter = (
   receivedAtUtc: string,
   evidence: string,
   accepted: boolean,
+  signaturePassword: string,
+  signatureMeaningAccepted: boolean,
 ) =>
   request<ExternalAuditDetails>(
     `/api/v1/external-audits/${id}/closure-letter`,
@@ -267,6 +293,8 @@ export const recordExternalAuditClosureLetter = (
         receivedAtUtc,
         evidence,
         accepted,
+        signaturePassword,
+        signatureMeaningAccepted,
       }),
     },
   );

@@ -52,5 +52,5 @@ public sealed class InternalAuditTests
     }
 
     private static InternalAudit Create(string auditee = "Üretim", string auditorDepartment = "Kalite Güvence") =>
-        InternalAudit.Create(Guid.NewGuid(), 2026, "Üretim kayıtları iç denetimi", "Proses denetimi", "Batch kayıtları", "Veri bütünlüğünü doğrulamak", "ISO 9001", auditee, Guid.NewGuid(), "Ayşe Denetçi", auditorDepartment, Now.AddDays(1), Now.AddDays(2), false, null, "2026.1", [("Batch kaydı izlenebilir mi?", "ISO 9001 7.5")], Now);
+        InternalAudit.Create(Guid.NewGuid(), 2026, "Üretim kayıtları iç denetimi", "Proses denetimi", "Batch kayıtları", "Veri bütünlüğünü doğrulamak", "ISO 9001", Guid.NewGuid(), auditee, Guid.NewGuid(), "Ayşe Denetçi", auditorDepartment, Now.AddDays(1), Now.AddDays(2), false, null, "2026.1", [("Batch kaydı izlenebilir mi?", "ISO 9001 7.5")], Now);
 }

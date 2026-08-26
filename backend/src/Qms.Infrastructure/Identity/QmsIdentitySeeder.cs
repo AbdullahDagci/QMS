@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Qms.Application.Security;
 using Qms.Domain.Organization;
+using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
 
 namespace Qms.Infrastructure.Identity;
 
-public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager)
+public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager, IConfiguration configuration)
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
@@ -19,14 +21,9 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
             }
         }
 
-        if (!await dbContext.Departments.AnyAsync(cancellationToken))
-        {
-            dbContext.Departments.AddRange(
-                Department.Create("KG", "Kalite Güvence"),
-                Department.Create("URT", "Üretim"),
-                Department.Create("RUH", "Ruhsatlandırma"),
-                Department.Create("SYS", "Sistem Yönetimi"));
-        }
+        var requiredDepartments = new[] { ("KG", "Kalite Güvence"), ("URT", "Üretim"), ("RUH", "Ruhsatlandırma"), ("SYS", "Sistem Yönetimi"), ("VAL", "Validasyon"), ("MUH", "Mühendislik"), ("BT", "Bilgi Teknolojileri"), ("KK", "Kalite Kontrol"), ("TZ", "Tedarik Zinciri") };
+        var departmentCodes = await dbContext.Departments.Select(item => item.Code).ToListAsync(cancellationToken);
+        foreach (var (code, name) in requiredDepartments.Where(item => !departmentCodes.Contains(item.Item1))) dbContext.Departments.Add(Department.Create(code, name));
 
         if (!await dbContext.Positions.AnyAsync(cancellationToken))
         {
@@ -58,7 +55,7 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
             var stored = await userManager.Users.SingleOrDefaultAsync(user => user.ProfileKey == profile.Key, cancellationToken);
             if (stored is null)
             {
-                var departmentCode = profile.Key is "reporter" or "action-owner" or "manager" ? "URT" : profile.Key == "regulatory" ? "RUH" : profile.Key == "admin" ? "SYS" : "KG";
+                var departmentCode = profile.Key switch { "reporter" or "action-owner" or "manager" => "URT", "regulatory" => "RUH", "admin" => "SYS", "validation-reviewer" => "VAL", "engineering-reviewer" => "MUH", "it-reviewer" => "BT", _ => "KG" };
                 stored = new ApplicationUser
                 {
                     Id = profile.UserId,
@@ -73,11 +70,15 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
                 Ensure(await userManager.CreateAsync(stored), $"{profile.DisplayName} kullanıcısı oluşturulamadı");
             }
 
+            if (stored.DisplayName != profile.DisplayName) { stored.DisplayName = profile.DisplayName; Ensure(await userManager.UpdateAsync(stored), $"{profile.DisplayName} adı güncellenemedi"); }
+
             var currentRoles = await userManager.GetRolesAsync(stored);
             var rolesToRemove = currentRoles.Except(profile.Roles).ToArray();
             if (rolesToRemove.Length > 0) Ensure(await userManager.RemoveFromRolesAsync(stored, rolesToRemove), $"{profile.DisplayName} eski rolleri kaldırılamadı");
             var rolesToAdd = profile.Roles.Except(currentRoles).ToArray();
             if (rolesToAdd.Length > 0) Ensure(await userManager.AddToRolesAsync(stored, rolesToAdd), $"{profile.DisplayName} rolleri atanamadı");
+            if (!await userManager.HasPasswordAsync(stored))
+                Ensure(await userManager.AddPasswordAsync(stored, configuration["DevelopmentAuth:SignaturePassword"] ?? "Qms.Dev!2026"), $"{profile.DisplayName} geliştirme imza parolası oluşturulamadı");
 
             if (!await dbContext.UserPositions.AnyAsync(item => item.UserId == stored.Id && item.EndsAtUtc == null, cancellationToken))
             {
@@ -86,10 +87,32 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
                     "quality" or "quality-reviewer" => "QA_SPECIALIST", "approver" => "QA_APPROVER", "qualified-person" => "QP",
                     "manager" => "DEPT_MANAGER", "investigator" => "INVESTIGATOR", "action-owner" => "ACTION_OWNER",
                     "reporter" => "REPORTER", "regulatory" => "REG_AFFAIRS", "document-controller" => "DOC_CONTROLLER",
-                    "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", _ => "QA_SPECIALIST"
+                    "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", "validation-reviewer" or "engineering-reviewer" or "it-reviewer" => "DEPT_MANAGER", _ => "QA_SPECIALIST"
                 };
                 dbContext.UserPositions.Add(UserPosition.Create(stored.Id, positions[positionCode].Id, stored.DepartmentId!.Value, true, DateTimeOffset.UtcNow));
             }
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var activeAssessmentTasks = await dbContext.WorkflowTaskAssignments.Where(item => item.AggregateType == "ChangeControl" && item.Status == WorkflowTaskStatus.Active && item.TaskRole.StartsWith("Assessment:")).ToListAsync(cancellationToken);
+        foreach (var task in activeAssessmentTasks)
+        {
+            if (!Guid.TryParse(task.TaskRole["Assessment:".Length..], out var assessmentId)) continue;
+            var assessment = await dbContext.ChangeAssessments.AsNoTracking().SingleOrDefaultAsync(item => item.Id == assessmentId, cancellationToken); if (assessment is null) continue;
+            var department = await dbContext.Departments.AsNoTracking().SingleOrDefaultAsync(item => item.IsActive && item.Name == assessment.Department, cancellationToken); if (department is null) continue;
+            var roleName = assessment.Department == "Ruhsatlandırma" ? QmsRoles.RegulatoryAffairs : assessment.Department == "Kalite Güvence" ? QmsRoles.QualityAssurance : QmsRoles.DepartmentManager;
+            var evaluatorId = department.ManagerUserId ?? await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id join user in dbContext.Users.AsNoTracking() on link.UserId equals user.Id where role.Name == roleName && user.IsActive && user.DepartmentId == department.Id orderby user.DisplayName select (Guid?)user.Id).FirstOrDefaultAsync(cancellationToken);
+            if (!evaluatorId.HasValue || task.AssignedUserId == evaluatorId.Value && task.AssignedDepartmentId == department.Id) continue;
+            task.Cancel(); dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("ChangeControl", task.AggregateId, task.TaskRole, evaluatorId.Value, department.Id, assignedAtUtc: DateTimeOffset.UtcNow, dueAtUtc: task.DueAtUtc));
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var managerProfiles = new Dictionary<string, string> { ["URT"] = "manager", ["VAL"] = "validation-reviewer", ["MUH"] = "engineering-reviewer", ["BT"] = "it-reviewer" };
+        foreach (var (departmentCode, profileKey) in managerProfiles)
+        {
+            var department = departments[departmentCode];
+            var managerId = await dbContext.Users.Where(item => item.ProfileKey == profileKey).Select(item => (Guid?)item.Id).SingleOrDefaultAsync(cancellationToken);
+            if (managerId.HasValue && department.ManagerUserId != managerId) department.Update(department.Name, department.ParentDepartmentId, managerId, department.IsActive);
         }
         await dbContext.SaveChangesAsync(cancellationToken);
     }

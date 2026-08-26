@@ -46,6 +46,7 @@ export function AuditTimeline({
       {chronologicalEvents.map((event, index) => {
         const isLatest = index === 0;
         const isLast = index === chronologicalEvents.length - 1;
+        const chronologicalSequence = chronologicalEvents.length - index;
         const presentation = auditPresentation(event, labels);
         return (
           <Box
@@ -54,7 +55,7 @@ export function AuditTimeline({
           >
             <Box className="audit-timeline-rail" aria-hidden="true">
               <Box className="audit-timeline-marker">
-                {isLatest ? <CheckCircleRounded /> : <span>{index + 1}</span>}
+                {isLatest ? <CheckCircleRounded /> : <span>{chronologicalSequence}</span>}
               </Box>
               {!isLast && <Box className="audit-timeline-line" />}
             </Box>
@@ -220,8 +221,8 @@ function auditPresentation(
   if (event.eventType === "DeviationStatusChanged") {
     const transitions: Record<string, [string, string]> = {
       "start-preliminary-review": [
-        "Ön inceleme başlatıldı",
-        "Gönderilen sapma ilk kalite incelemesine alındı.",
+        "Ön inceleme tamamlandı ve araştırmaya gönderildi",
+        "Kalite ön inceleme kararı imzalandı; araştırmacı görevi oluşturuldu.",
       ],
       "start-investigation": [
         "Kök neden araştırması başlatıldı",

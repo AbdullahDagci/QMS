@@ -26,6 +26,7 @@ public sealed class DeviationConfiguration : IEntityTypeConfiguration<Deviation>
         builder.Property(deviation => deviation.ExpectedState).HasMaxLength(2000).IsRequired();
         builder.Property(deviation => deviation.ImmediateAction).HasMaxLength(2000).IsRequired();
         builder.Property(deviation => deviation.DeviationType).HasMaxLength(80).IsRequired();
+        builder.Property(deviation => deviation.RiskMatrixVersion).HasMaxLength(40).IsRequired();
         builder.Property(deviation => deviation.DetectedDepartment).HasMaxLength(160).IsRequired();
         builder.Property(deviation => deviation.ProcessStage).HasMaxLength(160).IsRequired();
         builder.Property(deviation => deviation.PreliminaryReviewNote).HasMaxLength(2000);

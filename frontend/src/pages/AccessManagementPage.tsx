@@ -37,15 +37,20 @@ import {
 } from "@mui/icons-material";
 import {
   createDelegation,
+  createUser,
+  createDepartment,
   createWorkflowAssignment,
   getAccessOverview,
   revokeDelegation,
   updateUserAccess,
+  updateDepartment,
+  type Department,
   type AccessOverview,
   type AccessUser,
 } from "../api/access";
 import { ModalHeader } from "../components/ModalHeader";
 import { Permissions, useAuth } from "../security/AuthContext";
+import { getChangeControlDetails } from "../api/changeControls";
 
 const taskLabels: Record<string, string> = {
   Initiator: "Başlatan",
@@ -77,8 +82,10 @@ export function AccessManagementPage() {
   const { can } = useAuth();
   const [tab, setTab] = useState(0);
   const [editing, setEditing] = useState<AccessUser | null>(null);
+  const [userCreatorOpen, setUserCreatorOpen] = useState(false);
   const [delegationOpen, setDelegationOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [departmentEditor, setDepartmentEditor] = useState<Department | "new" | null>(null);
   const overview = useQuery({
     queryKey: ["access-overview"],
     queryFn: ({ signal }) => getAccessOverview(signal),
@@ -131,6 +138,7 @@ export function AccessManagementPage() {
           useFlexGap
           sx={{ flexWrap: "wrap" }}
         >
+          <Button variant="outlined" startIcon={<AddRounded />} onClick={() => setUserCreatorOpen(true)}>Kullanıcı ekle</Button>
           <Button
             variant="outlined"
             startIcon={<TaskAltRounded />}
@@ -191,7 +199,7 @@ export function AccessManagementPage() {
         <Box className="access-tab-panel">
           {tab === 0 && <UsersTable data={data} onEdit={setEditing} />}
           {tab === 1 && <RoleMatrix data={data} />}
-          {tab === 2 && <OrganizationView data={data} />}
+          {tab === 2 && <OrganizationView data={data} onEdit={setDepartmentEditor} />}
           {tab === 3 && <DelegationsView data={data} />}
           {tab === 4 && <AssignmentsView data={data} />}
         </Box>
@@ -211,6 +219,8 @@ export function AccessManagementPage() {
         data={data}
         onClose={() => setAssignmentOpen(false)}
       />
+      <CreateUserDialog open={userCreatorOpen} data={data} onClose={() => setUserCreatorOpen(false)} />
+      <DepartmentDialog department={departmentEditor} data={data} onClose={() => setDepartmentEditor(null)} />
     </Box>
   );
 }
@@ -378,12 +388,10 @@ function RoleMatrix({ data }: { data: AccessOverview }) {
   );
 }
 
-function OrganizationView({ data }: { data: AccessOverview }) {
+function OrganizationView({ data, onEdit }: { data: AccessOverview; onEdit: (department: Department | "new") => void }) {
   return (
     <>
-      <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-        Bölüm ve pozisyon yapısı
-      </Typography>
+      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Bölüm ve pozisyon yapısı</Typography><Button variant="contained" startIcon={<AddRounded />} onClick={() => onEdit("new")}>Yeni bölüm</Button></Stack>
       <Box className="department-grid">
         {data.departments.map((department) => (
           <Paper
@@ -410,6 +418,7 @@ function OrganizationView({ data }: { data: AccessOverview }) {
               }{" "}
               kullanıcı
             </Typography>
+            <Button sx={{ mt: 1 }} onClick={() => onEdit(department)}>Bölümü düzenle</Button>
           </Paper>
         ))}
       </Box>
@@ -428,6 +437,15 @@ function OrganizationView({ data }: { data: AccessOverview }) {
       </Stack>
     </>
   );
+}
+
+function DepartmentDialog({ department, data, onClose }: { department: Department | "new" | null; data: AccessOverview; onClose: () => void }) {
+  const client = useQueryClient(); const editing = department && department !== "new" ? department : null;
+  const [code, setCode] = useState(""); const [name, setName] = useState(""); const [managerId, setManagerId] = useState<string | null>(null); const [active, setActive] = useState(true);
+  useEffect(() => { if (!department) return; setCode(editing?.code ?? ""); setName(editing?.name ?? ""); setManagerId(editing?.managerUserId ?? null); setActive(editing?.isActive ?? true); }, [department, editing]);
+  const manager = data.users.find(x => x.id === managerId) ?? null;
+  const mutation = useMutation({ mutationFn: () => editing ? updateDepartment(editing.id, { name, managerUserId: managerId, isActive: active }) : createDepartment({ code, name, managerUserId: managerId }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["access-overview"] }); onClose(); } });
+  return <Dialog open={Boolean(department)} onClose={onClose} maxWidth="sm" fullWidth><ModalHeader onClose={onClose}><Typography variant="h5" sx={{ fontWeight: 800 }}>{editing ? "Bölümü düzenle" : "Yeni bölüm"}</Typography><Typography variant="body2" color="text.secondary">Bölüm yöneticisi, M.03 bölüm değerlendirmelerinde öncelikli değerlendirici olur.</Typography></ModalHeader><DialogContent dividers><Stack spacing={2} sx={{ pt: 1 }}>{mutation.isError && <Alert severity="error">{mutation.error.message}</Alert>}<TextField label="Bölüm kodu" value={code} disabled={Boolean(editing)} onChange={e => setCode(e.target.value.toUpperCase())} /><TextField label="Bölüm adı" value={name} onChange={e => setName(e.target.value)} /><Autocomplete options={data.users.filter(x => x.isActive)} value={manager} onChange={(_, value) => setManagerId(value?.id ?? null)} getOptionLabel={x => `${x.displayName} · ${x.departmentName ?? "Bölümsüz"}`} renderInput={params => <TextField {...params} label="Bölüm yöneticisi / değerlendiricisi" />} />{editing && <FormControlLabel control={<Checkbox checked={active} onChange={e => setActive(e.target.checked)} />} label="Bölüm aktif" />}</Stack></DialogContent><DialogActions><Button onClick={onClose}>Vazgeç</Button><Button variant="contained" disabled={!name.trim() || (!editing && !code.trim()) || mutation.isPending} onClick={() => mutation.mutate()}>Kaydet</Button></DialogActions></Dialog>;
 }
 
 function DelegationsView({ data }: { data: AccessOverview }) {
@@ -530,6 +548,15 @@ function AssignmentsView({ data }: { data: AccessOverview }) {
       </Table>
     </TableContainer>
   );
+}
+
+function CreateUserDialog({ open, data, onClose }: { open: boolean; data: AccessOverview; onClose: () => void }) {
+  const client=useQueryClient(); const [name,setName]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [department,setDepartment]=useState(''); const [roles,setRoles]=useState<string[]>([]); const [positions,setPositions]=useState<string[]>([])
+  const mutation=useMutation({mutationFn:()=>createUser({displayName:name,email,password,departmentId:department,roles,positionIds:positions}),onSuccess:async()=>{await client.invalidateQueries({queryKey:['access-overview']});setName('');setEmail('');setPassword('');setDepartment('');setRoles([]);setPositions([]);onClose()}})
+  return <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth><ModalHeader onClose={onClose}><Typography variant="h5" sx={{fontWeight:800}}>Yeni kullanıcı oluştur</Typography><Typography variant="body2" color="text.secondary">Kimlik, ilk parola, bölüm ve yetki kapsamını birlikte tanımlayın.</Typography></ModalHeader><DialogContent dividers><Stack spacing={2.2} sx={{pt:1}}>
+    {mutation.isError&&<Alert severity="error">{mutation.error.message}</Alert>}<Stack direction={{xs:'column',md:'row'}} spacing={2}><TextField fullWidth label="Ad soyad" value={name} onChange={e=>setName(e.target.value)}/><TextField fullWidth label="E-posta" type="email" value={email} onChange={e=>setEmail(e.target.value)}/></Stack><TextField label="İlk parola" type="password" helperText="En az 6 karakter; büyük/küçük harf, rakam ve özel karakter kullanın." value={password} onChange={e=>setPassword(e.target.value)}/>
+    <Autocomplete options={data.departments.filter(x=>x.isActive)} getOptionLabel={x=>`${x.code} · ${x.name}`} value={data.departments.find(x=>x.id===department)??null} onChange={(_,v)=>setDepartment(v?.id??'')} renderInput={p=><TextField {...p} label="Bölüm"/>}/><Autocomplete multiple options={data.roles} getOptionLabel={x=>x.name} value={data.roles.filter(x=>roles.includes(x.code))} onChange={(_,v)=>setRoles(v.map(x=>x.code))} renderInput={p=><TextField {...p} label="Sistem rolleri"/>}/><Autocomplete multiple options={data.positions.filter(x=>x.isActive)} getOptionLabel={x=>x.name} value={data.positions.filter(x=>positions.includes(x.id))} onChange={(_,v)=>setPositions(v.map(x=>x.id))} renderInput={p=><TextField {...p} label="Pozisyonlar"/>}/>
+  </Stack></DialogContent><DialogActions><Button onClick={onClose}>Vazgeç</Button><Button variant="contained" disabled={mutation.isPending||!name||!email||password.length<6||!department||roles.length===0} onClick={()=>mutation.mutate()}>Kullanıcıyı oluştur</Button></DialogActions></Dialog>
 }
 
 function UserAccessDialog({
@@ -790,6 +817,11 @@ function AssignmentDialog({
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       aggregateId.trim(),
     );
+  const changeDetails = useQuery({ queryKey: ["change-control-assignment-options", aggregateId], queryFn: ({ signal }) => getChangeControlDetails(aggregateId.trim(), signal), enabled: aggregateType === "ChangeControl" && validId, retry: false });
+  const availableTaskRoles = aggregateType === "ChangeControl" && changeDetails.data
+    ? changeDetails.data.assessments.filter(item => item.status === "Pending").map(item => `Assessment:${item.id}`)
+    : Object.keys(taskLabels);
+  const taskLabel = (value: string) => value.startsWith("Assessment:") ? `${changeDetails.data?.assessments.find(item => `Assessment:${item.id}` === value)?.department ?? "Bölüm"} değerlendirmesi` : taskLabels[value] ?? value;
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <ModalHeader onClose={onClose}>
@@ -812,18 +844,21 @@ function AssignmentDialog({
               options={[
                 "Deviation",
                 "Capa",
+                "ChangeControl",
                 "Complaint",
                 "InternalAudit",
                 "ExternalAudit",
                 "SupplierAudit",
               ]}
               value={aggregateType}
-              onChange={(_, value) => setAggregateType(value ?? "Deviation")}
+              onChange={(_, value) => { setAggregateType(value ?? "Deviation"); setTaskRole(value === "ChangeControl" ? "" : "Investigator"); }}
               getOptionLabel={(value) =>
                 value === "Deviation"
                   ? "M.01 · Sapma"
                   : value === "Capa"
                     ? "M.02 · DÖF"
+                    : value === "ChangeControl"
+                      ? "M.03 · Değişiklik Kontrol"
                     : value === "Complaint"
                       ? "M.06 · Müşteri Şikâyeti"
                       : value === "InternalAudit"
@@ -850,10 +885,10 @@ function AssignmentDialog({
             />
           </Stack>
           <Autocomplete
-            options={Object.keys(taskLabels)}
+            options={availableTaskRoles}
             value={taskRole}
-            getOptionLabel={(value) => taskLabels[value] ?? value}
-            onChange={(_, value) => setTaskRole(value ?? "Investigator")}
+            getOptionLabel={taskLabel}
+            onChange={(_, value) => setTaskRole(value ?? "")}
             renderInput={(params) => (
               <TextField {...params} label="Kayıt görevi" />
             )}
@@ -886,7 +921,7 @@ function AssignmentDialog({
         <Button onClick={onClose}>Vazgeç</Button>
         <Button
           variant="contained"
-          disabled={!validId || !userId || mutation.isPending}
+          disabled={!validId || !taskRole || !userId || mutation.isPending}
           onClick={() => mutation.mutate()}
         >
           Görevi ata

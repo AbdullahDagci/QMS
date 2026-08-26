@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Qms.Domain.Capas;
 using Qms.Domain.Deviations;
 using Qms.Domain.QualityRecords;
+using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Persistence.Configurations;
 
@@ -14,6 +15,8 @@ public sealed class CapaConfiguration : IEntityTypeConfiguration<Capa>
         builder.HasKey(x => x.Id);
         builder.HasOne<QualityRecord>().WithOne().HasForeignKey<Capa>(x => x.QualityRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Deviation>().WithMany().HasForeignKey(x => x.SourceDeviationId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.EffectivenessEvaluatorUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(x => x.Actions).WithOne().HasForeignKey(x => x.CapaId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(x => x.Actions).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.HasIndex(x => x.QualityRecordId).IsUnique();
@@ -25,6 +28,8 @@ public sealed class CapaConfiguration : IEntityTypeConfiguration<Capa>
         builder.Property(x => x.RootCause).HasMaxLength(4000).IsRequired();
         builder.Property(x => x.ImmediateActions).HasMaxLength(2000).IsRequired();
         builder.Property(x => x.Owner).HasMaxLength(160).IsRequired();
+        builder.HasIndex(x => x.OwnerUserId);
+        builder.HasIndex(x => x.EffectivenessEvaluatorUserId);
         builder.Property(x => x.EffectivenessMethod).HasMaxLength(1000).IsRequired();
         builder.Property(x => x.EffectivenessSample).HasMaxLength(1000).IsRequired();
         builder.Property(x => x.SuccessCriteria).HasMaxLength(2000).IsRequired();

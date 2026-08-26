@@ -10,8 +10,22 @@ public static class CapaEndpoints
     public static IEndpointRouteBuilder MapCapaEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/capas").WithTags("CAPA").RequireAuthorization(QmsPolicies.QualityView);
+        group.MapGet("/lookups", async (ICapaService service, CancellationToken ct) => Results.Ok(await service.GetLookupsAsync(ct)));
         group.MapPost("/search", async (CapaSearchRequest request, ICapaService service, CancellationToken ct) => await Execute(() => service.SearchAsync(request, ct)));
         group.MapGet("/{id:guid}/details", async (Guid id, ICapaService service, CancellationToken ct) => { var result = await service.GetDetailsAsync(id, ct); return result is null ? Results.NotFound() : Results.Ok(result); });
+        group.MapGet("/{id:guid}/final-report", async (Guid id, ICapaService service, ICapaFinalReportService reports, HttpResponse response, CancellationToken ct) =>
+        {
+            var details = await service.GetDetailsAsync(id, ct);
+            if (details is null) return Results.NotFound();
+            try
+            {
+                var report = await reports.EnsureGeneratedAsync(details, ct);
+                response.Headers.Append("X-Content-SHA256", report.Sha256);
+                response.Headers.Append("Cache-Control", "private, immutable");
+                return Results.File(report.Content, "application/pdf", report.FileName);
+            }
+            catch (InvalidOperationException ex) { return Results.Problem(statusCode: 409, title: "Nihai rapor üretilemedi", detail: ex.Message); }
+        }).WithName("DownloadCapaFinalReport");
         group.MapPost("/", async (CreateCapaRequest request, ICapaService service, CancellationToken ct) => await Execute(async () => { var result = await service.CreateAsync(request, ct); return result; }, true)).RequireAuthorization(QmsPolicies.CapaPlan);
         group.MapPost("/{id:guid}/actions", async (Guid id, AddCapaActionRequest request, ICapaService service, CancellationToken ct) => await Mutate(() => service.AddActionAsync(id, request, ct))).RequireAuthorization(QmsPolicies.CapaPlan);
         group.MapPost("/{id:guid}/actions/{actionId:guid}/complete", async (Guid id, Guid actionId, CompleteCapaActionRequest request, ICapaService service, CancellationToken ct) => await Mutate(() => service.CompleteActionAsync(id, actionId, request, ct))).RequireAuthorization(QmsPolicies.CapaCompleteAction);

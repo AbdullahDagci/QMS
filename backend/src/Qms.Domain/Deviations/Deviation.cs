@@ -38,6 +38,8 @@ public sealed class Deviation
 
     public int RiskScore { get; private set; }
 
+    public string RiskMatrixVersion { get; private set; } = string.Empty;
+
     public DeviationClassification Classification { get; private set; }
 
     public bool CapaRequired { get; private set; }
@@ -76,7 +78,8 @@ public sealed class Deviation
         int likelihood,
         int severity,
         int detectability,
-        DateTimeOffset createdAtUtc)
+        DateTimeOffset createdAtUtc,
+        string riskMatrixVersion = "M01-RISK-1.0")
     {
         if (qualityRecordId == Guid.Empty)
         {
@@ -93,6 +96,7 @@ public sealed class Deviation
         ValidateRiskFactor(likelihood, nameof(likelihood));
         ValidateRiskFactor(severity, nameof(severity));
         ValidateRiskFactor(detectability, nameof(detectability));
+        ValidateRequiredText(riskMatrixVersion, nameof(riskMatrixVersion), 40);
 
         if (occurredAtUtc > detectedAtUtc)
         {
@@ -125,6 +129,7 @@ public sealed class Deviation
             Severity = severity,
             Detectability = detectability,
             RiskScore = riskScore,
+            RiskMatrixVersion = riskMatrixVersion.Trim(),
             Classification = classification,
             CapaRequired = classification is DeviationClassification.Major or DeviationClassification.Critical,
             Status = DeviationStatus.Draft,
@@ -160,6 +165,19 @@ public sealed class Deviation
 
         PreliminaryReviewNote = reviewNote.Trim();
         TransitionTo(DeviationStatus.PreliminaryReview, occurredAtUtc);
+    }
+
+    public void CompletePreliminaryReviewAndStartInvestigation(
+        long expectedVersion,
+        string reviewNote,
+        DateTimeOffset occurredAtUtc)
+    {
+        EnsureVersion(expectedVersion);
+        EnsureStatus(DeviationStatus.Submitted);
+        ValidateRequiredText(reviewNote, nameof(reviewNote), 2000);
+
+        PreliminaryReviewNote = reviewNote.Trim();
+        TransitionTo(DeviationStatus.Investigation, occurredAtUtc);
     }
 
     public void StartInvestigation(long expectedVersion, DateTimeOffset occurredAtUtc)

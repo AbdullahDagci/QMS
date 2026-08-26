@@ -17,7 +17,9 @@ public sealed class DeviationBatchImpactConfiguration : IEntityTypeConfiguration
         builder.Property(impact => impact.BatchNumber).HasMaxLength(120).IsRequired();
         builder.Property(impact => impact.Disposition).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(impact => impact.Rationale).HasMaxLength(2000).IsRequired();
-        builder.HasIndex(impact => new { impact.DeviationId, impact.BatchNumber }).IsUnique();
+        builder.Property(impact => impact.AssessedByNameSnapshot).HasMaxLength(200).IsRequired();
+        builder.Property(impact => impact.AssessedByDepartmentSnapshot).HasMaxLength(160).IsRequired();
+        builder.HasIndex(impact => new { impact.DeviationId, impact.BatchNumber, impact.AssessedAtUtc });
         builder.HasIndex(impact => new { impact.Disposition, impact.IsLocked });
     }
 }

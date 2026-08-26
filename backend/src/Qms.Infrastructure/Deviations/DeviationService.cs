@@ -1,25 +1,117 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.AspNetCore.Identity;
 using Qms.Application.Deviations;
 using Qms.Application.Security;
 using Qms.Contracts.Common;
 using Qms.Contracts.Deviations;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.Deviations;
+using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
+using Qms.Domain.Notifications;
 using Qms.Infrastructure.Persistence;
+using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Deviations;
 
-public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser)
+public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, UserManager<ApplicationUser> userManager, IDeviationFinalReportService finalReportService)
     : IDeviationService
 {
-    private static readonly Guid PrototypeDepartmentId = Guid.Parse("01991f70-6f40-7000-8000-000000000002");
+    public async Task<DeviationLookupsResponse> GetLookupsAsync(CancellationToken cancellationToken)
+    {
+        var departments = await dbContext.Departments.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name)
+            .Select(x => new DeviationDepartmentOptionResponse(x.Id, x.Code, x.Name)).ToListAsync(cancellationToken);
+        var types = await dbContext.DeviationTypeDefinitions.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+            .Select(x => new DeviationTypeResponse(x.Id, x.Code, x.Name, x.SortOrder, x.IsActive)).ToListAsync(cancellationToken);
+        return new DeviationLookupsResponse(departments, types);
+    }
+
+    public async Task<IReadOnlyList<DeviationTypeResponse>> ListDeviationTypesAsync(CancellationToken cancellationToken) =>
+        await dbContext.DeviationTypeDefinitions.AsNoTracking().OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+            .Select(x => new DeviationTypeResponse(x.Id, x.Code, x.Name, x.SortOrder, x.IsActive)).ToListAsync(cancellationToken);
+
+    public async Task<DeviationTypeResponse> CreateDeviationTypeAsync(CreateDeviationTypeRequest request, CancellationToken cancellationToken)
+    {
+        var code = request.Code.Trim().ToUpperInvariant();
+        var name = request.Name.Trim();
+        if (await dbContext.DeviationTypeDefinitions.AnyAsync(x => x.Code == code || x.Name == name, cancellationToken))
+            throw new ArgumentException("Aynı kod veya ada sahip sapma türü zaten mevcut.");
+        var now = timeProvider.GetUtcNow();
+        var item = DeviationTypeDefinition.Create(code, name, request.SortOrder, now);
+        dbContext.DeviationTypeDefinitions.Add(item);
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeCreated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder })));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(item.Id, item.Code, item.Name, item.SortOrder, item.IsActive);
+    }
+
+    public async Task<DeviationTypeResponse?> UpdateDeviationTypeAsync(Guid id, UpdateDeviationTypeRequest request, CancellationToken cancellationToken)
+    {
+        var item = await dbContext.DeviationTypeDefinitions.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (item is null) return null;
+        var name = request.Name.Trim();
+        if (await dbContext.DeviationTypeDefinitions.AnyAsync(x => x.Id != id && x.Name == name, cancellationToken))
+            throw new ArgumentException("Aynı ada sahip sapma türü zaten mevcut.");
+        var now = timeProvider.GetUtcNow();
+        item.Update(name, request.SortOrder, request.IsActive, now);
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeUpdated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder, item.IsActive })));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(item.Id, item.Code, item.Name, item.SortOrder, item.IsActive);
+    }
+
+    public async Task<IReadOnlyList<DeviationAssignmentRuleResponse>> ListAssignmentRulesAsync(CancellationToken ct) =>
+        await (from rule in dbContext.DeviationAssignmentRules.AsNoTracking()
+               join user in dbContext.Users.AsNoTracking() on rule.AssignedUserId equals user.Id
+               orderby rule.TaskRole, rule.Priority descending
+               select new DeviationAssignmentRuleResponse(rule.Id, rule.TaskRole, rule.AssignedUserId, user.DisplayName, rule.DetectedDepartment, rule.DeviationType, rule.MinimumRiskScore, rule.Priority, rule.IsActive)).ToListAsync(ct);
+
+    public async Task<DeviationAssignmentRuleResponse> CreateAssignmentRuleAsync(SaveDeviationAssignmentRuleRequest request, CancellationToken ct)
+    {
+        await ValidateAssignmentRuleAsync(request, ct);
+        var rule = DeviationAssignmentRule.Create(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority);
+        if (!request.IsActive) rule.Update(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, false);
+        dbContext.DeviationAssignmentRules.Add(rule);
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleCreated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(request)));
+        await dbContext.SaveChangesAsync(ct);
+        return (await ListAssignmentRulesAsync(ct)).Single(x => x.Id == rule.Id);
+    }
+
+    public async Task<DeviationAssignmentRuleResponse?> UpdateAssignmentRuleAsync(Guid id, SaveDeviationAssignmentRuleRequest request, CancellationToken ct)
+    {
+        await ValidateAssignmentRuleAsync(request, ct);
+        var rule = await dbContext.DeviationAssignmentRules.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (rule is null) return null;
+        rule.Update(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, request.IsActive);
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleUpdated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(request)));
+        await dbContext.SaveChangesAsync(ct);
+        return (await ListAssignmentRulesAsync(ct)).Single(x => x.Id == rule.Id);
+    }
+
+    private async Task ValidateAssignmentRuleAsync(SaveDeviationAssignmentRuleRequest request, CancellationToken ct)
+    {
+        var requiredRole = RequiredGlobalRole(request.TaskRole);
+        var eligible = await (from link in dbContext.UserRoles.AsNoTracking()
+                              join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id
+                              join user in dbContext.Users.AsNoTracking() on link.UserId equals user.Id
+                              where user.Id == request.AssignedUserId && user.IsActive && role.Name == requiredRole
+                              select user.Id).AnyAsync(ct);
+        if (!eligible) throw new ArgumentException($"Seçilen kullanıcı etkin olmalı ve {requiredRole} rolünü taşımalıdır.");
+    }
+
+    private static string RequiredGlobalRole(string taskRole) => taskRole switch
+    {
+        WorkflowTaskRoles.ProcessAuthority or WorkflowTaskRoles.Evaluator => QmsRoles.QualityAssurance,
+        WorkflowTaskRoles.Investigator => QmsRoles.Investigator,
+        WorkflowTaskRoles.Approver => QmsRoles.Approver,
+        _ => throw new ArgumentException("M.01 görev rolü geçersizdir.", nameof(taskRole))
+    };
 
     public async Task<IReadOnlyList<DeviationListItemResponse>> ListAsync(
         CancellationToken cancellationToken)
@@ -101,6 +193,9 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                 item.RootCauseCategory,
                 item.RootCauseDescription,
                 item.Conclusion,
+                item.InvestigatorUserId,
+                item.InvestigatorNameSnapshot,
+                item.InvestigatorDepartmentSnapshot,
                 item.CompletedAtUtc))
             .ToListAsync(cancellationToken);
         var batchImpacts = await dbContext.DeviationBatchImpacts
@@ -114,6 +209,9 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                 item.IsLocked,
                 item.Disposition.ToString(),
                 item.Rationale,
+                item.AssessedByUserId,
+                item.AssessedByNameSnapshot,
+                item.AssessedByDepartmentSnapshot,
                 item.AssessedAtUtc))
             .ToListAsync(cancellationToken);
         var auditEvents = await dbContext.AuditEvents
@@ -145,6 +243,16 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                     capa.Status.ToString(),
                     capa.TargetDateUtc))
             .ToListAsync(cancellationToken);
+        var signatures = await dbContext.ElectronicSignatures.AsNoTracking()
+            .Where(x => x.QualityRecordId == record.QualityRecordId)
+            .OrderByDescending(x => x.SignedAtUtc)
+            .Select(x => new DeviationSignatureResponse(x.Id, x.RecordVersion, x.SignerUserId, x.SignerDisplayNameSnapshot, x.Meaning, x.SignedAtUtc, x.ContentHash, x.Comment))
+            .ToListAsync(cancellationToken);
+
+        var requiredTaskRole = RequiredTaskRole(record.Status);
+        var canTransition = requiredTaskRole is not null && await CanCurrentUserPerformAsync("Deviation", id, requiredTaskRole, cancellationToken);
+        var canInvestigate = record.Status == nameof(DeviationStatus.Investigation) && await CanCurrentUserPerformAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
+        var canAssessBatch = record.Status == nameof(DeviationStatus.ImpactAssessment) && await CanCurrentUserPerformAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
 
         return new DeviationDetailsResponse(
             record,
@@ -152,7 +260,10 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             batchImpacts,
             linkedCapas,
             auditTrail,
-            GetAvailableTransitions(record.Status));
+            signatures,
+            canTransition ? GetAvailableTransitions(record.Status) : [],
+            canInvestigate,
+            canAssessBatch);
     }
 
     public async Task<DeviationResponse> CreateAsync(
@@ -161,6 +272,13 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
     {
         var now = timeProvider.GetUtcNow();
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var actorDepartment = await CurrentDepartmentAsync(cancellationToken);
+        var detectedDepartment = request.DetectedDepartment.Trim();
+        if (!await dbContext.Departments.AsNoTracking().AnyAsync(x => x.IsActive && x.Name == detectedDepartment, cancellationToken))
+            throw new ArgumentException("Seçilen tespit bölümü etkin organizasyon bölümleri arasında bulunamadı.", nameof(request.DetectedDepartment));
+        var deviationType = request.DeviationType.Trim();
+        if (!await dbContext.DeviationTypeDefinitions.AsNoTracking().AnyAsync(x => x.IsActive && x.Name == deviationType, cancellationToken))
+            throw new ArgumentException("Seçilen sapma türü etkin tanımlar arasında bulunamadı.", nameof(request.DeviationType));
 
         var sequence = await NextRecordNumberAsync(now.Year, transaction, cancellationToken);
         var recordNumber = $"SP-{now.Year}-{sequence:000000}";
@@ -168,7 +286,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             recordNumber,
             "deviation",
             currentUser.Id,
-            currentUser.DepartmentId ?? PrototypeDepartmentId,
+            actorDepartment.Id,
             now);
         var deviation = Deviation.CreateDraft(
             record.Id,
@@ -176,8 +294,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             request.Description,
             request.ExpectedState,
             request.ImmediateAction,
-            request.DeviationType,
-            request.DetectedDepartment,
+            deviationType,
+            detectedDepartment,
             request.ProcessStage,
             request.OccurredAtUtc.ToUniversalTime(),
             request.DetectedAtUtc.ToUniversalTime(),
@@ -188,7 +306,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
 
         dbContext.QualityRecords.Add(record);
         dbContext.Deviations.Add(deviation);
-        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, WorkflowTaskRoles.Initiator, currentUser.Id, currentUser.DepartmentId, now, deviation.TargetDateUtc));
+        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, WorkflowTaskRoles.Initiator, currentUser.Id, actorDepartment.Id, now, deviation.TargetDateUtc, assignedUserNameSnapshot: currentUser.DisplayName, assignedDepartmentNameSnapshot: actorDepartment.Name));
         dbContext.AuditEvents.Add(CreateAuditEvent(
             deviation,
             "DeviationCreated",
@@ -232,7 +350,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         deviation.Submit(request.ExpectedVersion, now);
         record.Submit(now);
         await CompleteTasksAsync("Deviation", id, WorkflowTaskRoles.Initiator, now, cancellationToken);
-        await AssignRoleAsync("Deviation", id, WorkflowTaskRoles.ProcessAuthority, QmsRoles.QualityAssurance, record.CreatedByUserId, now, deviation.TargetDateUtc, cancellationToken);
+        await AssignRoleAsync(deviation, WorkflowTaskRoles.ProcessAuthority, record.CreatedByUserId, now, cancellationToken);
         dbContext.AuditEvents.Add(CreateAuditEvent(
             deviation,
             "DeviationSubmitted",
@@ -265,6 +383,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
 
         var now = timeProvider.GetUtcNow();
         await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
+        var actorDepartment = await CurrentDepartmentNameAsync(cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         deviation.RegisterInvestigation(request.ExpectedVersion, now);
         var investigation = DeviationInvestigation.CreateCompleted(
@@ -274,6 +393,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             request.RootCauseDescription,
             request.Conclusion,
             currentUser.Id,
+            currentUser.DisplayName,
+            actorDepartment,
             now);
         dbContext.DeviationInvestigations.Add(investigation);
         dbContext.AuditEvents.Add(CreateAuditEvent(
@@ -305,6 +426,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
 
         var now = timeProvider.GetUtcNow();
         await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
+        var actorDepartment = await CurrentDepartmentNameAsync(cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         deviation.RegisterBatchImpact(request.ExpectedVersion, now);
         var impact = DeviationBatchImpact.Create(
@@ -314,6 +436,9 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             request.IsLocked,
             disposition,
             request.Rationale,
+            currentUser.Id,
+            currentUser.DisplayName,
+            actorDepartment,
             now);
         dbContext.DeviationBatchImpacts.Add(impact);
         dbContext.AuditEvents.Add(CreateAuditEvent(
@@ -344,19 +469,22 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         var now = timeProvider.GetUtcNow();
         var previousStatus = deviation.Status;
         EnsureMakerChecker(record, request.Transition);
+        await EnsureSignatureAuthenticationAsync(request, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         switch (request.Transition.Trim().ToLowerInvariant())
         {
             case "start-preliminary-review":
                 await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.ProcessAuthority, cancellationToken);
-                deviation.StartPreliminaryReview(request.ExpectedVersion, request.Note ?? string.Empty, now);
+                deviation.CompletePreliminaryReviewAndStartInvestigation(request.ExpectedVersion, request.Note ?? string.Empty, now);
+                await CompleteTasksAsync("Deviation", id, WorkflowTaskRoles.ProcessAuthority, now, cancellationToken);
+                await AssignRoleAsync(deviation, WorkflowTaskRoles.Investigator, null, now, cancellationToken);
                 break;
             case "start-investigation":
                 await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.ProcessAuthority, cancellationToken);
                 deviation.StartInvestigation(request.ExpectedVersion, now);
                 await CompleteTasksAsync("Deviation", id, WorkflowTaskRoles.ProcessAuthority, now, cancellationToken);
-                await AssignRoleAsync("Deviation", id, WorkflowTaskRoles.Investigator, QmsRoles.Investigator, null, now, deviation.TargetDateUtc, cancellationToken);
+                await AssignRoleAsync(deviation, WorkflowTaskRoles.Investigator, null, now, cancellationToken);
                 break;
             case "complete-investigation":
                 await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
@@ -366,12 +494,12 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                 break;
             case "complete-impact-assessment":
                 await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.Investigator, cancellationToken);
-                var hasPendingBatch = await dbContext.DeviationBatchImpacts.AnyAsync(
-                    item => item.DeviationId == id && item.Disposition == BatchDisposition.Pending,
-                    cancellationToken);
+                var batchDecisions = await dbContext.DeviationBatchImpacts.AsNoTracking().Where(item => item.DeviationId == id).ToListAsync(cancellationToken);
+                var hasPendingBatch = batchDecisions.GroupBy(item => item.BatchNumber, StringComparer.OrdinalIgnoreCase)
+                    .Any(group => group.OrderByDescending(item => item.AssessedAtUtc).First().Disposition == BatchDisposition.Pending);
                 deviation.CompleteImpactAssessment(request.ExpectedVersion, hasPendingBatch, now);
                 await CompleteTasksAsync("Deviation", id, WorkflowTaskRoles.Investigator, now, cancellationToken);
-                await AssignRoleAsync("Deviation", id, WorkflowTaskRoles.Evaluator, QmsRoles.QualityAssurance, record.CreatedByUserId, now, deviation.TargetDateUtc, cancellationToken);
+                await AssignRoleAsync(deviation, WorkflowTaskRoles.Evaluator, record.CreatedByUserId, now, cancellationToken);
                 break;
             case "complete-quality-assessment":
                 await EnsureAssignedActorAsync("Deviation", id, WorkflowTaskRoles.Evaluator, cancellationToken);
@@ -432,9 +560,19 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             now,
             new { from = previousStatus.ToString(), to = deviation.Status.ToString(), request.Transition },
             request.Note));
+        if (IsApprovalTransition(request.Transition))
+        {
+            var meaning = SignatureMeaning(request.Transition);
+            var signedContent = $"Deviation|{deviation.Id}|{deviation.Version}|{request.Transition.Trim().ToLowerInvariant()}|{request.Note?.Trim()}";
+            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signedContent)));
+            dbContext.ElectronicSignatures.Add(ElectronicSignature.Create(record.Id, deviation.Version, currentUser.Id, currentUser.DisplayName, meaning, now, contentHash, request.Note));
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return await GetDetailsAsync(id, cancellationToken);
+        var details = await GetDetailsAsync(id, cancellationToken);
+        if (details is not null && string.Equals(details.Record.Status, "Closed", StringComparison.Ordinal))
+            await finalReportService.EnsureGeneratedAsync(details, cancellationToken);
+        return details;
     }
 
     private IQueryable<DeviationResponse> QueryResponses(Guid? id = null)
@@ -467,6 +605,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             deviation.Severity,
             deviation.Detectability,
             deviation.RiskScore,
+            deviation.RiskMatrixVersion,
             deviation.Classification.ToString(),
             deviation.CapaRequired,
             deviation.Status.ToString(),
@@ -499,6 +638,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         deviation.Severity,
         deviation.Detectability,
         deviation.RiskScore,
+        deviation.RiskMatrixVersion,
         deviation.Classification.ToString(),
         deviation.CapaRequired,
         deviation.Status.ToString(),
@@ -532,37 +672,18 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
     private void EnsureMakerChecker(QualityRecord record, string transition)
     {
         var approval = transition.Trim().ToLowerInvariant() is "start-preliminary-review" or "complete-quality-assessment" or "complete-effectiveness-review" or "close";
-        if (approval && record.CreatedByUserId == currentUser.Id && !currentUser.IsInRole(QmsRoles.Administrator))
+        if (approval && record.CreatedByUserId == currentUser.Id)
             throw new QmsForbiddenException("Görev ayrılığı kuralı: Kaydı oluşturan kullanıcı aynı kaydın onay adımını tamamlayamaz.");
     }
 
     private async Task EnsureAssignedActorAsync(string aggregateType, Guid aggregateId, string taskRole, CancellationToken ct)
     {
-        if (currentUser.IsInRole(QmsRoles.Administrator)) return;
         var assignments = await dbContext.WorkflowTaskAssignments.AsNoTracking().Where(item => item.AggregateType == aggregateType && item.AggregateId == aggregateId && item.TaskRole == taskRole && item.Status == WorkflowTaskStatus.Active).ToListAsync(ct);
-        if (assignments.Count == 0)
-        {
-            EnsureFallbackTaskRole(taskRole);
-            return;
-        }
+        if (assignments.Count == 0) throw new QmsForbiddenException("Bu M.01 aşaması için etkin görev ataması bulunmuyor. Sistem Yöneticisi kayıt görevini açıkça atamalıdır.");
         if (assignments.Any(item => item.AssignedUserId == currentUser.Id)) return;
         var now = timeProvider.GetUtcNow();
         var delegated = await dbContext.Delegations.AsNoTracking().AnyAsync(item => assignments.Select(assignment => assignment.AssignedUserId).Contains(item.DelegatorUserId) && item.DelegateUserId == currentUser.Id && item.RevokedAtUtc == null && item.StartsAtUtc <= now && item.EndsAtUtc >= now && (item.Scope == "ALL" || item.Scope == "M.01"), ct);
         if (!delegated) throw new QmsForbiddenException("Bu kayıt görevi size veya etkin bir delegasyonla size atanmamış.");
-    }
-
-    private void EnsureFallbackTaskRole(string taskRole)
-    {
-        var allowed = taskRole switch
-        {
-            WorkflowTaskRoles.ProcessAuthority or WorkflowTaskRoles.Evaluator => currentUser.IsInRole(QmsRoles.QualityAssurance),
-            WorkflowTaskRoles.Initiator => currentUser.IsInRole(QmsRoles.DeviationReporter) || currentUser.IsInRole(QmsRoles.QualityAssurance),
-            WorkflowTaskRoles.Investigator => currentUser.IsInRole(QmsRoles.Investigator) || currentUser.IsInRole(QmsRoles.QualityAssurance),
-            WorkflowTaskRoles.ActionOwner => currentUser.IsInRole(QmsRoles.ActionOwner) || currentUser.IsInRole(QmsRoles.QualityAssurance),
-            WorkflowTaskRoles.Approver or WorkflowTaskRoles.QualifiedPerson => currentUser.IsInRole(QmsRoles.Approver) || currentUser.IsInRole(QmsRoles.QualifiedPerson) || currentUser.IsInRole(QmsRoles.QualityAssurance),
-            _ => false
-        };
-        if (!allowed) throw new QmsForbiddenException("Bu aşama için gerekli kayıt görevi veya sistem rolü sizde bulunmuyor.");
     }
 
     private async Task CompleteTasksAsync(string aggregateType, Guid aggregateId, string taskRole, DateTimeOffset now, CancellationToken ct)
@@ -571,31 +692,120 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         foreach (var task in tasks) task.Complete(now);
     }
 
-    private async Task AssignRoleAsync(string aggregateType, Guid aggregateId, string taskRole, string globalRole, Guid? excludedUserId, DateTimeOffset now, DateTimeOffset? dueAt, CancellationToken ct)
+    private async Task AssignRoleAsync(Deviation deviation, string taskRole, Guid? excludedUserId, DateTimeOffset now, CancellationToken ct)
     {
-        var userId = await (from userRole in dbContext.UserRoles.AsNoTracking()
-                            join role in dbContext.Roles.AsNoTracking() on userRole.RoleId equals role.Id
-                            join user in dbContext.Users.AsNoTracking() on userRole.UserId equals user.Id
-                            where role.Name == globalRole && user.IsActive && user.Id != excludedUserId
-                            orderby user.DisplayName
-                            select user.Id).FirstOrDefaultAsync(ct);
-        if (userId == Guid.Empty) return;
-        var departmentId = await dbContext.Users.Where(item => item.Id == userId).Select(item => item.DepartmentId).SingleAsync(ct);
-        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create(aggregateType, aggregateId, taskRole, userId, departmentId, now, dueAt));
+        var globalRole = RequiredGlobalRole(taskRole);
+        var rule = await (from candidate in dbContext.DeviationAssignmentRules.AsNoTracking()
+                          join user in dbContext.Users.AsNoTracking() on candidate.AssignedUserId equals user.Id
+                          join userRole in dbContext.UserRoles.AsNoTracking() on user.Id equals userRole.UserId
+                          join role in dbContext.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+                          where candidate.IsActive && candidate.TaskRole == taskRole && user.IsActive && user.Id != excludedUserId && role.Name == globalRole
+                                && (candidate.DetectedDepartment == null || candidate.DetectedDepartment == deviation.DetectedDepartment)
+                                && (candidate.DeviationType == null || candidate.DeviationType == deviation.DeviationType)
+                                && (candidate.MinimumRiskScore == null || deviation.RiskScore >= candidate.MinimumRiskScore)
+                          orderby (candidate.DetectedDepartment != null ? 1 : 0) + (candidate.DeviationType != null ? 1 : 0) + (candidate.MinimumRiskScore != null ? 1 : 0) descending, candidate.Priority descending
+                          select candidate).FirstOrDefaultAsync(ct);
+        if (rule is null) throw new InvalidOperationException($"{taskRole} görevi için sapma türü, bölüm ve RPN ile eşleşen etkin M.01 atama kuralı bulunamadı.");
+        var userId = rule.AssignedUserId;
+        var assignee = await (from user in dbContext.Users.AsNoTracking()
+                              join department in dbContext.Departments.AsNoTracking() on user.DepartmentId equals department.Id into departments
+                              from department in departments.DefaultIfEmpty()
+                              where user.Id == userId
+                              select new { user.DepartmentId, user.DisplayName, DepartmentName = department == null ? null : department.Name }).SingleAsync(ct);
+        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, taskRole, userId, assignee.DepartmentId, now, deviation.TargetDateUtc, assignedUserNameSnapshot: assignee.DisplayName, assignedDepartmentNameSnapshot: assignee.DepartmentName));
+        var recordNumber = await dbContext.QualityRecords.AsNoTracking().Where(x => x.Id == deviation.QualityRecordId).Select(x => x.RecordNumber).SingleAsync(ct);
+        dbContext.UserNotifications.Add(UserNotification.Create(
+            userId,
+            "M.01",
+            "Yeni sapma görevi atandı",
+            $"{recordNumber} için {TaskRoleLabel(taskRole)} görevi size atandı.",
+            $"/modules/deviations?open={deviation.Id}",
+            now));
+    }
+
+    private static string TaskRoleLabel(string taskRole) => taskRole switch
+    {
+        WorkflowTaskRoles.ProcessAuthority => "işlem yetkilisi",
+        WorkflowTaskRoles.Investigator => "araştırmacı",
+        WorkflowTaskRoles.Evaluator => "değerlendiren",
+        WorkflowTaskRoles.Approver => "onaylayan",
+        _ => taskRole
+    };
+
+    private static bool IsApprovalTransition(string transition) => transition.Trim().ToLowerInvariant() is
+        "start-preliminary-review" or "complete-quality-assessment" or "complete-effectiveness-review" or "close";
+
+    private static string SignatureMeaning(string transition) => transition.Trim().ToLowerInvariant() switch
+    {
+        "start-preliminary-review" => "Sapma ön inceleme kararı",
+        "complete-quality-assessment" => "Sapma kalite değerlendirme onayı",
+        "complete-effectiveness-review" => "Sapma etkinlik doğrulaması",
+        "close" => "Sapma nihai kapanış onayı",
+        _ => "Sapma iş akışı onayı"
+    };
+
+    private async Task EnsureSignatureAuthenticationAsync(TransitionDeviationRequest request, CancellationToken ct)
+    {
+        if (!IsApprovalTransition(request.Transition)) return;
+        if (!request.SignatureMeaningAccepted) throw new QmsForbiddenException("Elektronik imza anlamı açıkça kabul edilmelidir.");
+        if (string.IsNullOrWhiteSpace(request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza için parola yeniden girilmelidir.");
+        var user = await userManager.FindByIdAsync(currentUser.Id.ToString());
+        if (user is null || !user.IsActive || !await userManager.CheckPasswordAsync(user, request.SignaturePassword))
+            throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız.");
+    }
+
+    private async Task<bool> CanCurrentUserPerformAsync(string aggregateType, Guid aggregateId, string taskRole, CancellationToken ct)
+    {
+        var owners = await dbContext.WorkflowTaskAssignments.AsNoTracking()
+            .Where(x => x.AggregateType == aggregateType && x.AggregateId == aggregateId && x.TaskRole == taskRole && x.Status == WorkflowTaskStatus.Active)
+            .Select(x => x.AssignedUserId).ToListAsync(ct);
+        if (owners.Contains(currentUser.Id)) return true;
+        if (owners.Count == 0) return false;
+        var now = timeProvider.GetUtcNow();
+        return await dbContext.Delegations.AsNoTracking().AnyAsync(x => owners.Contains(x.DelegatorUserId) && x.DelegateUserId == currentUser.Id && x.RevokedAtUtc == null && x.StartsAtUtc <= now && x.EndsAtUtc >= now && (x.Scope == "ALL" || x.Scope == "M.01"), ct);
+    }
+
+    private static string? RequiredTaskRole(string status) => status switch
+    {
+        nameof(DeviationStatus.Submitted) or nameof(DeviationStatus.PreliminaryReview) or nameof(DeviationStatus.ActionImplementation) => WorkflowTaskRoles.ProcessAuthority,
+        nameof(DeviationStatus.Investigation) or nameof(DeviationStatus.ImpactAssessment) => WorkflowTaskRoles.Investigator,
+        nameof(DeviationStatus.QualityAssessment) or nameof(DeviationStatus.EffectivenessReview) => WorkflowTaskRoles.Evaluator,
+        nameof(DeviationStatus.ClosureApproval) => WorkflowTaskRoles.Approver,
+        _ => null
+    };
+
+    private async Task<string> CurrentDepartmentNameAsync(CancellationToken ct)
+    {
+        return (await CurrentDepartmentAsync(ct)).Name;
+    }
+
+    private async Task<(Guid Id, string Name)> CurrentDepartmentAsync(CancellationToken ct)
+    {
+        var department = await (from user in dbContext.Users.AsNoTracking()
+                                join item in dbContext.Departments.AsNoTracking() on user.DepartmentId equals item.Id
+                                where user.Id == currentUser.Id && user.IsActive && item.IsActive
+                                select new { item.Id, item.Name })
+            .SingleOrDefaultAsync(ct);
+
+        if (department is null)
+            throw new InvalidOperationException("M.01 işlemi için kullanıcıya organizasyonda etkin bir bölüm atanmalıdır.");
+
+        return (department.Id, department.Name);
     }
 
     private Task AssignNextDeviationTaskAsync(Deviation deviation, Guid creatorId, DateTimeOffset now, CancellationToken ct) => deviation.Status switch
     {
-        DeviationStatus.ActionImplementation => AssignRoleAsync("Deviation", deviation.Id, WorkflowTaskRoles.ProcessAuthority, QmsRoles.QualityAssurance, creatorId, now, deviation.TargetDateUtc, ct),
-        DeviationStatus.EffectivenessReview => AssignRoleAsync("Deviation", deviation.Id, WorkflowTaskRoles.Evaluator, QmsRoles.QualityAssurance, creatorId, now, deviation.TargetDateUtc, ct),
-        DeviationStatus.ClosureApproval => AssignRoleAsync("Deviation", deviation.Id, WorkflowTaskRoles.Approver, QmsRoles.Approver, creatorId, now, deviation.TargetDateUtc, ct),
+        DeviationStatus.ActionImplementation => AssignRoleAsync(deviation, WorkflowTaskRoles.ProcessAuthority, creatorId, now, ct),
+        DeviationStatus.EffectivenessReview => AssignRoleAsync(deviation, WorkflowTaskRoles.Evaluator, creatorId, now, ct),
+        DeviationStatus.ClosureApproval => AssignRoleAsync(deviation, WorkflowTaskRoles.Approver, creatorId, now, ct),
         _ => Task.CompletedTask
     };
 
     private static IReadOnlyList<DeviationTransitionResponse> GetAvailableTransitions(string status) => status switch
     {
-        "Submitted" => [new("start-preliminary-review", "Ön incelemeyi başlat", true)],
-        "PreliminaryReview" => [new("start-investigation", "Araştırmayı başlat", false)],
+        "Submitted" => [new("start-preliminary-review", "Ön incelemeyi tamamla ve araştırmaya gönder", true)],
+        // Geriye uyumluluk: eski sürümde ön incelemeye alınmış kayıtlar ilerleyebilsin.
+        "PreliminaryReview" => [new("start-investigation", "Araştırmaya gönder", false)],
         "Investigation" => [new("complete-investigation", "Araştırmayı tamamla", false)],
         "ImpactAssessment" => [new("complete-impact-assessment", "Etki değerlendirmesini tamamla", false)],
         "QualityAssessment" => [new("complete-quality-assessment", "KG değerlendirmesini tamamla", true)],

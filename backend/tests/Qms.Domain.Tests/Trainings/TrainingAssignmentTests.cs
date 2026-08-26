@@ -51,7 +51,7 @@ public sealed class TrainingAssignmentTests
     }
 
     private static TrainingAssignment Create(TrainingAssessmentMode mode, int maxAttempts = 3) => TrainingAssignment.Create(
-        Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Üretim Kullanıcısı", "Sapma Bildiren",
+        Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Üretim Kullanıcısı", Guid.NewGuid(), "Sapma Bildiren",
         "SOP-URT-014", "Dolum Hattı Temizlik SOP · Sürüm 0.1", mode, TrainingDeliveryMethod.Electronic, 80, 12, maxAttempts,
         true, Now.AddDays(7), null, null, true, Now);
 }
