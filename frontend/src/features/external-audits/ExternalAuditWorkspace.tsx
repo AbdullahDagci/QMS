@@ -67,6 +67,7 @@ import { searchDocuments, type DocumentListItem } from "../../api/documents";
 import { AdvancedFilterButton } from "../../components/AdvancedFilterPanel";
 import { AuditTimeline } from "../../components/AuditTimeline";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   ModuleGuideDialog,
   ModuleInfoButton,
@@ -319,11 +320,12 @@ export function ExternalAuditWorkspace() {
                   direction={direction}
                   onSort={sort}
                 />
+                <TableCell align="right">İşlem</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {query.isFetching ? (
-                <TableLoadingRows columns={7} rows={6} />
+                <TableLoadingRows columns={8} rows={6} />
               ) : (
                 items.map((x) => (
                   <AuditRow
@@ -335,7 +337,7 @@ export function ExternalAuditWorkspace() {
               )}
               {!query.isFetching && !items.length && (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Alert severity="info" sx={{ my: 2 }}>
                       Filtrelerle eşleşen dış denetim bulunamadı.
                     </Alert>
@@ -502,6 +504,9 @@ function AuditRow({
           color={item.status === "Closed" ? "success" : "primary"}
           label={statusLabels[item.status] ?? item.status}
         />
+      </TableCell>
+      <TableCell align="right">
+        <RecordActionMenu onOpen={onOpen} />
       </TableCell>
     </TableRow>
   );

@@ -6,7 +6,6 @@ import {
   DescriptionRounded,
   FilterAltRounded,
   HistoryRounded,
-  MoreHorizRounded,
   SettingsRounded,
   TaskAltRounded,
 } from "@mui/icons-material";
@@ -52,6 +51,7 @@ import {
 import { RecordAssignments } from "../../components/RecordAssignments";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import { Permissions, useAuth } from "../../security/AuthContext";
 
 type Module = "m13" | "m14" | "m15" | "m16";
@@ -283,7 +283,11 @@ export function SpecializedWorkspace({ module }: { module: Module }) {
         </Stack>
       </Paper>
       <Stack className="module-list-toolbar" direction="row" spacing={1.5}>
-        <Button component="span" variant="outlined" startIcon={<FilterAltRounded />}>
+        <Button
+          component="span"
+          variant="outlined"
+          startIcon={<FilterAltRounded />}
+        >
           Tüm kayıtlar
         </Button>
         <Typography variant="body2">
@@ -329,14 +333,7 @@ export function SpecializedWorkspace({ module }: { module: Module }) {
                   {new Date(x.dueAtUtc).toLocaleDateString("tr-TR")}
                 </TableCell>
                 <TableCell align="right">
-                  <Button
-                    className="module-row-actions"
-                    variant="outlined"
-                    startIcon={<MoreHorizRounded />}
-                    onClick={() => setParams({ open: x.id })}
-                  >
-                    İşlemler
-                  </Button>
+                  <RecordActionMenu onOpen={() => setParams({ open: x.id })} />
                 </TableCell>
               </TableRow>
             ))}

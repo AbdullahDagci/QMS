@@ -70,6 +70,7 @@ import {
 } from "../../api/documents";
 import { searchChangeControls } from "../../api/changeControls";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   SearchableMultiSelect,
   SearchableSelect,
@@ -223,7 +224,12 @@ export function DocumentWorkspace() {
         open={lookupSettingsOpen}
         onClose={() => setLookupSettingsOpen(false)}
       />
-      <Stack className="module-list-toolbar" direction="row" spacing={1.5} sx={{ mt: 3, alignItems: "center" }}>
+      <Stack
+        className="module-list-toolbar"
+        direction="row"
+        spacing={1.5}
+        sx={{ mt: 3, alignItems: "center" }}
+      >
         <AdvancedFilterButton
           open={filtersOpen}
           activeCount={filters.length}
@@ -435,7 +441,7 @@ function Row({ item, open }: { item: DocumentListItem; open: () => void }) {
       </TableCell>
       <TableCell>{dt(item.plannedEffectiveDateUtc)}</TableCell>
       <TableCell align="right">
-        <Button onClick={open}>Aç</Button>
+        <RecordActionMenu onOpen={open} />
       </TableCell>
     </TableRow>
   );

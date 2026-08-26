@@ -63,6 +63,7 @@ import {
   type CreateChangeControlInput,
 } from "../../api/changeControls";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   SearchableMultiSelect,
   SearchableSelect,
@@ -202,7 +203,12 @@ export function ChangeControlWorkspace() {
           )}
         </Stack>
       </Stack>
-      <Stack className="module-list-toolbar" direction="row" spacing={1.5} sx={{ mt: 3, alignItems: "center" }}>
+      <Stack
+        className="module-list-toolbar"
+        direction="row"
+        spacing={1.5}
+        sx={{ mt: 3, alignItems: "center" }}
+      >
         <AdvancedFilterButton
           open={filtersOpen}
           activeCount={filters.length}
@@ -432,7 +438,7 @@ function ChangeRow({
       </TableCell>
       <TableCell>{date(item.targetDateUtc)}</TableCell>
       <TableCell align="right">
-        <Button onClick={onOpen}>Aç</Button>
+        <RecordActionMenu onOpen={onOpen} />
       </TableCell>
     </TableRow>
   );

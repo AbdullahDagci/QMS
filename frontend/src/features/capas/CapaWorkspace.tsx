@@ -55,6 +55,7 @@ import {
   type CreateCapaInput,
 } from "../../api/capas";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   SearchableSelect,
   type SelectOption,
@@ -176,7 +177,12 @@ export function CapaWorkspace() {
           )}
         </Stack>
       </Stack>
-      <Stack className="module-list-toolbar" direction="row" spacing={1.5} sx={{ mt: 3, alignItems: "center" }}>
+      <Stack
+        className="module-list-toolbar"
+        direction="row"
+        spacing={1.5}
+        sx={{ mt: 3, alignItems: "center" }}
+      >
         <AdvancedFilterButton
           open={filtersOpen}
           activeCount={filters.length}
@@ -344,7 +350,7 @@ function CapaRow({ capa, onOpen }: { capa: CapaListItem; onOpen: () => void }) {
       </TableCell>
       <TableCell>{date(capa.targetDateUtc)}</TableCell>
       <TableCell align="right">
-        <Button onClick={onOpen}>Aç</Button>
+        <RecordActionMenu onOpen={onOpen} />
       </TableCell>
     </TableRow>
   );

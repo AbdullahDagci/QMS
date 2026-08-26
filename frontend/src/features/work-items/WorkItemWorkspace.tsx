@@ -50,6 +50,7 @@ import {
 } from "../../api/workItems";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { RecordAssignments } from "../../components/RecordAssignments";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import { Permissions, useAuth } from "../../security/AuthContext";
 
 const status: Record<string, string> = {
@@ -286,7 +287,7 @@ export function WorkItemWorkspace() {
                 </TableCell>
                 <TableCell>{status[x.status] ?? x.status}</TableCell>
                 <TableCell align="right">
-                  <Button onClick={() => setParams({ open: x.id })}>Aç</Button>
+                  <RecordActionMenu onOpen={() => setParams({ open: x.id })} />
                 </TableCell>
               </TableRow>
             ))}
@@ -665,7 +666,13 @@ function Details({
     if (!open) setTab(0);
   }, [open, setTab]);
   return (
-    <Dialog open={open} onClose={close} fullScreen>
+    <Dialog
+      open={open}
+      onClose={close}
+      fullWidth
+      maxWidth="xl"
+      slotProps={{ paper: { className: "record-details-paper" } }}
+    >
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <Header
           title={

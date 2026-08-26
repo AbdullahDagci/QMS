@@ -71,6 +71,7 @@ import {
 import { AdvancedFilterButton } from "../../components/AdvancedFilterPanel";
 import { AuditTimeline } from "../../components/AuditTimeline";
 import { ModalHeader } from "../../components/ModalHeader";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   ModuleGuideDialog,
   ModuleInfoButton,
@@ -506,7 +507,7 @@ function TrainingRow({
         </Typography>
       </TableCell>
       <TableCell align="right">
-        <Button onClick={open}>Aç</Button>
+        <RecordActionMenu onOpen={open} />
       </TableCell>
     </TableRow>
   );

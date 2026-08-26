@@ -45,6 +45,7 @@ import {
 } from "../../api/mbrs";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { RecordAssignments } from "../../components/RecordAssignments";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 const status: Record<string, string> = {
   Draft: "Taslak",
   InReview: "İncelemede",
@@ -223,7 +224,7 @@ export function MbrWorkspace() {
                   />
                 </TableCell>
                 <TableCell>
-                  <Button onClick={() => setParams({ open: x.id })}>Aç</Button>
+                  <RecordActionMenu onOpen={() => setParams({ open: x.id })} />
                 </TableCell>
               </TableRow>
             ))}
@@ -554,7 +555,13 @@ function Details({
   download: () => void;
 }) {
   return (
-    <Dialog open={open} fullScreen onClose={close}>
+    <Dialog
+      open={open}
+      onClose={close}
+      fullWidth
+      maxWidth="xl"
+      slotProps={{ paper: { className: "record-details-paper m01-aligned-details" } }}
+    >
       <Head
         title={
           data

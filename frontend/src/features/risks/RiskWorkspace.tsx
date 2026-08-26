@@ -52,6 +52,7 @@ import {
 } from "../../api/risks";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { RecordAssignments } from "../../components/RecordAssignments";
+import { RecordActionMenu } from "../../components/RecordActionMenu";
 import { Permissions, useAuth } from "../../security/AuthContext";
 const labels: Record<string, string> = {
   Draft: "Taslak",
@@ -280,7 +281,7 @@ export function RiskWorkspace() {
                 <TableCell>{x.openActionCount}</TableCell>
                 <TableCell>{labels[x.status]}</TableCell>
                 <TableCell>
-                  <Button onClick={() => setParams({ open: x.id })}>Aç</Button>
+                  <RecordActionMenu onOpen={() => setParams({ open: x.id })} />
                 </TableCell>
               </TableRow>
             ))}
@@ -638,7 +639,13 @@ function RiskDialog({
   }) => void;
 }) {
   return (
-    <Dialog open={open} fullScreen onClose={close}>
+    <Dialog
+      open={open}
+      onClose={close}
+      fullWidth
+      maxWidth="xl"
+      slotProps={{ paper: { className: "record-details-paper m01-aligned-details" } }}
+    >
       <Head
         title={
           data
