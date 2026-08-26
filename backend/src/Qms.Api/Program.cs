@@ -539,6 +539,7 @@ app.MapDashboardEndpoints();
 app.MapSecurityEndpoints();
 app.MapAccessAdministrationEndpoints();
 app.MapNotificationEndpoints();
+app.MapElectronicSignatureEndpoints();
 
 app.MapHealthChecks("/health/live", new() { Predicate = _ => false });
 

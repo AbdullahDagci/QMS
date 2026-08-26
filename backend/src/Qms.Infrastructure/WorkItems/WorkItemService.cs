@@ -1,28 +1,24 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.Security;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.WorkItems;
 using Qms.Contracts.Common;
 using Qms.Contracts.WorkItems;
 using Qms.Domain.AuditTrail;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.WorkItems;
 using Qms.Domain.Workflows;
-using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.Persistence;
 
 namespace Qms.Infrastructure.WorkItems;
 
-public sealed class WorkItemService(QmsDbContext db, TimeProvider time, ICurrentUser user, UserManager<ApplicationUser> users) : IWorkItemService
+public sealed class WorkItemService(QmsDbContext db, TimeProvider time, ICurrentUser user, IElectronicSignatureService signatures) : IWorkItemService
 {
     public async Task<WorkItemOptionsResponse> GetOptionsAsync(CancellationToken ct)
     {
@@ -61,8 +57,8 @@ public sealed class WorkItemService(QmsDbContext db, TimeProvider time, ICurrent
             case "assign": if(qr.CreatedByUserId!=user.Id&&!user.IsInRole(QmsRoles.Administrator)&&!user.IsInRole(QmsRoles.QualityAssurance))throw new QmsForbiddenException("Kaydı yalnızca oluşturan kullanıcı veya kalite yöneticisi atayabilir.");w.Assign(r.ExpectedVersion,now);await Assign(w.Id,WorkflowTaskRoles.WorkItemOwner,w.OwnerUserId,now,w.DueAtUtc,ct);type="WorkItemAssigned";break;
             case "start":await EnsureActor(id,WorkflowTaskRoles.WorkItemOwner,ct);w.Start(r.ExpectedVersion,now);type="WorkItemStarted";break;
             case "submit":await EnsureActor(id,WorkflowTaskRoles.WorkItemOwner,ct);w.Submit(r.ExpectedVersion,r.Evidence??"",now);await Complete(id,WorkflowTaskRoles.WorkItemOwner,now,ct);await Assign(w.Id,WorkflowTaskRoles.WorkItemVerifier,w.VerifierUserId,now,w.DueAtUtc,ct);type="WorkItemSubmitted";break;
-            case "verify":await EnsureActor(id,WorkflowTaskRoles.WorkItemVerifier,ct);await Signature(r,ct);w.Verify(r.ExpectedVersion,r.Approved,r.Note??"",now);db.Add(ElectronicSignature.Create(w.QualityRecordId,w.Version,user.Id,user.DisplayName,r.Approved?"İş tamamlama ve kanıt doğrulama onayı":"İş kanıtı ret ve yeniden çalışma kararı",now,Hash(w.Id,w.Version,r.Approved?"approve":"reject",r.Note),r.Note));await Complete(id,WorkflowTaskRoles.WorkItemVerifier,now,ct);if(r.Approved){qr.Close(now,false);await CompleteAll(id,now,ct);}else await Assign(w.Id,WorkflowTaskRoles.WorkItemOwner,w.OwnerUserId,now,w.DueAtUtc,ct);type=r.Approved?"WorkItemVerified":"WorkItemRejected";break;
-            case "cancel":if(!user.IsInRole(QmsRoles.Administrator)&&!user.IsInRole(QmsRoles.QualityAssurance))throw new QmsForbiddenException("İşi yalnızca kalite yöneticisi iptal edebilir.");await Signature(r,ct);w.Cancel(r.ExpectedVersion,r.Note??"",now);db.Add(ElectronicSignature.Create(w.QualityRecordId,w.Version,user.Id,user.DisplayName,"İş kaydı iptal onayı",now,Hash(w.Id,w.Version,"cancel",r.Note),r.Note));await CompleteAll(id,now,ct);type="WorkItemCancelled";break;
+            case "verify":await EnsureActor(id,WorkflowTaskRoles.WorkItemVerifier,ct);await signatures.AuthenticateAsync(r.SignaturePassword,r.SignatureMeaningAccepted,ct);w.Verify(r.ExpectedVersion,r.Approved,r.Note??"",now);db.Add(signatures.CreateInternal(w.QualityRecordId,"WorkItem",w.Id,w.Version,r.Approved?"approve":"reject",r.Approved?"İş tamamlama ve kanıt doğrulama onayı":"İş kanıtı ret ve yeniden çalışma kararı",new{workItem=w,r.Approved,r.Note},now,r.Note));await Complete(id,WorkflowTaskRoles.WorkItemVerifier,now,ct);if(r.Approved){qr.Close(now,false);await CompleteAll(id,now,ct);}else await Assign(w.Id,WorkflowTaskRoles.WorkItemOwner,w.OwnerUserId,now,w.DueAtUtc,ct);type=r.Approved?"WorkItemVerified":"WorkItemRejected";break;
+            case "cancel":if(!user.IsInRole(QmsRoles.Administrator)&&!user.IsInRole(QmsRoles.QualityAssurance))throw new QmsForbiddenException("İşi yalnızca kalite yöneticisi iptal edebilir.");await signatures.AuthenticateAsync(r.SignaturePassword,r.SignatureMeaningAccepted,ct);w.Cancel(r.ExpectedVersion,r.Note??"",now);db.Add(signatures.CreateInternal(w.QualityRecordId,"WorkItem",w.Id,w.Version,"cancel","İş kaydı iptal onayı",new{workItem=w,r.Note},now,r.Note));await CompleteAll(id,now,ct);type="WorkItemCancelled";break;
             default:throw new ArgumentException("İş geçişi geçersizdir.");}
         db.Add(Audit(w,type,now,new{r.Transition,r.Approved},r.Note??r.Evidence));await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);return await GetDetailsAsync(id,ct);
     }
@@ -72,13 +68,11 @@ public sealed class WorkItemService(QmsDbContext db, TimeProvider time, ICurrent
     private async Task CompleteAll(Guid id,DateTimeOffset now,CancellationToken ct){foreach(var t in await db.WorkflowTaskAssignments.Where(x=>x.AggregateType=="WorkItem"&&x.AggregateId==id&&x.Status==WorkflowTaskStatus.Active).ToListAsync(ct))t.Complete(now);}
     private async Task EnsureActor(Guid id,string role,CancellationToken ct){if(!await CanAct(id,role,ct))throw new QmsForbiddenException("Bu iş görevi size veya etkin bir delegasyonla size atanmamış.");}
     private async Task<bool> CanAct(Guid id,string role,CancellationToken ct){var owners=await db.WorkflowTaskAssignments.AsNoTracking().Where(x=>x.AggregateType=="WorkItem"&&x.AggregateId==id&&x.TaskRole==role&&x.Status==WorkflowTaskStatus.Active).Select(x=>x.AssignedUserId).ToListAsync(ct);if(owners.Contains(user.Id))return true;var now=time.GetUtcNow();return owners.Count>0&&await db.Delegations.AsNoTracking().AnyAsync(x=>owners.Contains(x.DelegatorUserId)&&x.DelegateUserId==user.Id&&x.RevokedAtUtc==null&&x.StartsAtUtc<=now&&x.EndsAtUtc>=now&&(x.Scope=="M.10"||x.Scope=="ALL"),ct);}
-    private async Task Signature(TransitionWorkItemRequest r,CancellationToken ct){if(!r.SignatureMeaningAccepted||string.IsNullOrWhiteSpace(r.SignaturePassword))throw new ArgumentException("Elektronik imza için parola ve anlam kabulü zorunludur.");var a=await users.FindByIdAsync(user.Id.ToString())??throw new QmsForbiddenException("İmzalayan kullanıcı bulunamadı.");if(!a.IsActive||!await users.CheckPasswordAsync(a,r.SignaturePassword))throw new QmsForbiddenException("Elektronik imza parolası geçersizdir.");}
     private async Task Lookup(string c,string code,string field,CancellationToken ct){if(!await db.WorkItemLookupDefinitions.AsNoTracking().AnyAsync(x=>x.Category==c&&x.Code==code.Trim()&&x.IsActive,ct))throw new ArgumentException($"{field} etkin M.10 lookup kayıtlarından seçilmelidir.");}
     private async Task<(Guid Id,string Name,Guid? DepartmentId,string? Department)> Resolve(Guid id,string field,CancellationToken ct){var p=await(from u in db.Users.AsNoTracking()join d in db.Departments.AsNoTracking()on u.DepartmentId equals d.Id into ds from d in ds.DefaultIfEmpty()where u.Id==id&&u.IsActive select new{u.Id,u.DisplayName,u.DepartmentId,Department=d==null?null:d.Name}).SingleOrDefaultAsync(ct);return p is null?throw new ArgumentException($"{field} etkin sistem kullanıcılarından seçilmelidir."):(p.Id,p.DisplayName,p.DepartmentId,p.Department);}
     private static void EnsureCategory(string c){if(c.Trim() is not("Category" or "Priority"))throw new ArgumentException("M.10 lookup kategorisi Category veya Priority olmalıdır.");}
     private AuditEvent Audit(WorkItem w,string type,DateTimeOffset now,object payload,string? reason=null)=>Event("WorkItem",w.Id,w.Version,type,now,payload,reason);
     private AuditEvent Event(string aggregate,Guid id,long version,string type,DateTimeOffset now,object payload,string? reason=null)=>AuditEvent.Create(aggregate,id,version,type,user.Id,user.DisplayName,now,Guid.CreateVersion7().ToString(),JsonSerializer.SerializeToDocument(payload),reason);
-    private static string Hash(Guid id,long v,string op,string? note)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{id:N}|{v}|{op}|{note?.Trim()}"))).ToLowerInvariant();
     private async Task<long> Next(string type,int year,IDbContextTransaction tx,CancellationToken ct){var c=db.Database.GetDbConnection();if(c.State!=ConnectionState.Open)await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.Transaction=tx.GetDbTransaction();cmd.CommandText="INSERT INTO core.record_number_sequence (\"RecordType\", \"CalendarYear\", \"LastValue\") VALUES (@type,@year,1) ON CONFLICT (\"RecordType\",\"CalendarYear\") DO UPDATE SET \"LastValue\"=core.record_number_sequence.\"LastValue\"+1 RETURNING \"LastValue\";";Add(cmd,"type",type);Add(cmd,"year",year);return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct),CultureInfo.InvariantCulture);}
     private static void Add(DbCommand c,string n,object v){var p=c.CreateParameter();p.ParameterName=n;p.Value=v;c.Parameters.Add(p);}
     private sealed class Row{public required WorkItem Item{get;init;}public required string Number{get;init;}}

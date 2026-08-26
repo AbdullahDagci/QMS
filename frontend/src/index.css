@@ -1,7 +1,7 @@
 :root {
-  font-family: Aptos, "Avenir Next", "Segoe UI", sans-serif;
-  color: #172b34;
-  background: #f4f5f0;
+  font-family: Inter, Aptos, "Avenir Next", "Segoe UI", Roboto, Arial, sans-serif;
+  color: #181c32;
+  background: #f5f8fa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -13,7 +13,7 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #f4f5f0;
+  background: #f5f8fa;
 }
 
 body {

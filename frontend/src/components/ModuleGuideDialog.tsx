@@ -1,46 +1,26 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   Box,
   Button,
   Chip,
   Dialog,
   DialogContent,
-  IconButton,
-  LinearProgress,
   Paper,
   Stack,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import {
   AccountTreeRounded,
-  ArrowBackRounded,
   ArrowForwardRounded,
-  AssignmentRounded,
-  CalendarMonthRounded,
-  ChatBubbleOutlineRounded,
-  CheckCircleRounded,
-  DescriptionRounded,
-  FactCheckRounded,
+  AssignmentTurnedInRounded,
   GroupsRounded,
-  HealthAndSafetyRounded,
   InfoOutlined,
-  Inventory2Rounded,
   LinkRounded,
   LockRounded,
-  ManageSearchRounded,
-  MarkEmailReadRounded,
-  PauseRounded,
-  PlayArrowRounded,
-  PlaylistAddCheckRounded,
-  ReplayRounded,
-  RuleRounded,
-  ScienceRounded,
-  TaskAltRounded,
-  UploadFileRounded,
-  VerifiedRounded,
-  WarningAmberRounded,
   MenuBookRounded,
+  RuleRounded,
+  SecurityRounded,
+  VerifiedRounded,
 } from "@mui/icons-material";
 import { ModalHeader } from "./ModalHeader";
 
@@ -54,722 +34,523 @@ type ModuleCode =
   | "M.07"
   | "M.08"
   | "M.09";
-type GuideStage = { title: string; text: string; role: string; guard: string };
 
-const guides: Record<
-  ModuleCode,
-  {
-    title: string;
-    summary: string;
-    recordNumber: string;
-    recordTitle: string;
-    stages: GuideStage[];
-    rules: string[];
-    connections: string[];
-  }
-> = {
+type GuideStep = {
+  title: string;
+  actor: string;
+  permission: string;
+  action: string;
+  result: string;
+  control: string;
+};
+
+type GuideRole = {
+  role: string;
+  taskRole: string;
+  permission: string;
+  responsibility: string;
+};
+
+type GuideConnection = {
+  process: string;
+  direction: string;
+  trigger: string;
+  communication: string;
+  data: string;
+  dependency: string;
+};
+
+type ModuleGuide = {
+  name: string;
+  purpose: string;
+  entry: string;
+  steps: GuideStep[];
+  roles: GuideRole[];
+  rules: string[];
+  connections: GuideConnection[];
+};
+
+const step = (
+  title: string,
+  actor: string,
+  permission: string,
+  action: string,
+  result: string,
+  control: string,
+): GuideStep => ({ title, actor, permission, action, result, control });
+
+const guides: Record<ModuleCode, ModuleGuide> = {
   "M.01": {
-    title: "Sapma Yönetimi ekran simülasyonu",
-    summary:
-      "Örnek bir sapmanın bildirimden kontrollü kapanışa kadar hangi ekranlardan ve hangi rollerden geçtiğini adım adım izleyin.",
-    recordNumber: "SP-2026-000128",
-    recordTitle: "Dolum sıcaklığı limit sapması",
-    stages: [
-      {
-        title: "Taslak",
-        text: "Sapma tanımı, beklenen durum, olay zamanı ve acil aksiyon aynı formda kaydedilir.",
-        role: "Sapma bildiren",
-        guard: "Zorunlu alanlar ve olay–tespit zamanı doğrulanır.",
-      },
-      {
-        title: "Gönderim",
-        text: "Olasılık, şiddet ve tespit edilebilirlik değerlerinden RPN otomatik hesaplanır.",
-        role: "Sapma bildiren",
-        guard: "Risk sınıfı ve DÖF zorunluluğu sistem tarafından belirlenir.",
-      },
-      {
-        title: "Ön inceleme",
-        text: "KG kaydın kapsamını, ilk aksiyonları ve araştırma gerekliliğini değerlendirir.",
-        role: "İşlem yetkilisi",
-        guard: "Kaydı oluşturan kullanıcı kendi kalite kararını veremez.",
-      },
-      {
-        title: "Araştırma",
-        text: "Araştırmacı yöntem, kök neden kategorisi, bulgu ve sonucu kayda bağlar.",
-        role: "Araştırmacı",
-        guard: "Yalnız kayda atanmış araştırmacı bu ekranı tamamlayabilir.",
-      },
-      {
-        title: "Etki",
-        text: "Etkilenen batch ve seriler ayrı satırlarda değerlendirilerek dispozisyon kararı verilir.",
-        role: "Araştırmacı / KG",
-        guard: "Kararı bekleyen batch varken sonraki aşamaya geçilemez.",
-      },
-      {
-        title: "KG kararı",
-        text: "Kalite değerlendirmesi, DÖF bağlantısı ve etkinlik gerekliliği birlikte karara bağlanır.",
-        role: "Değerlendiren",
-        guard: "Majör ve kritik sapma ilişkili DÖF olmadan ilerleyemez.",
-      },
-      {
-        title: "Aksiyon",
-        text: "Bağlı DÖF kayıtlarının aksiyon ve kapanış ilerlemesi sapma ekranından izlenir.",
-        role: "İşlem yetkilisi",
-        guard: "Açık ilişkili DÖF varken sapma aksiyon aşaması tamamlanamaz.",
-      },
-      {
-        title: "Etkinlik",
-        text: "Tekrar oluşum, başarı kriterleri ve gözlem sonucu kanıtla değerlendirilir.",
-        role: "Değerlendiren",
-        guard: "Etkisiz sonuç kapanışa gönderilemez; ek aksiyon gerekir.",
-      },
-      {
-        title: "Kapanış",
-        text: "Kontrol listesi, gerekçe ve görev ayrılığı kontrolü ardından kayıt kapatılır.",
-        role: "Onaylayan",
-        guard: "Açık bağımlılık veya eksik onay varsa kapanış engellenir.",
-      },
+    name: "Sapma Yönetimi",
+    purpose:
+      "Bir uygunsuzluğu ilk bildirimden araştırma, etki ve kalite değerlendirmesine; gerekiyorsa DÖF ve etkinlik kontrolü üzerinden kontrollü kapanışa taşır.",
+    entry:
+      "Sapma Yönetimi listesinden “Yeni sapma” seçilir. Kayıt açmak için deviation.create izni ve organizasyonda etkin bir bölüm gerekir.",
+    steps: [
+      step(
+        "Sapma kaydını oluştur",
+        "Sapma Bildiren · Initiator",
+        "deviation.create",
+        "Başlık, gerçekleşen ve beklenen durum, acil aksiyon, tür, bölüm, proses aşaması ve olay/tespit zamanlarını girer. Olasılık × şiddet × tespit edilebilirlik değerlerini seçer.",
+        "Sistem RPN, sınıf, hedef kapanış tarihi ve DÖF gerekliliğini hesaplayarak taslak kaydı oluşturur.",
+        "Zorunlu alanlar, tarih sırası ve kullanıcının etkin bölüm kaydı API tarafından doğrulanır.",
+      ),
+      step(
+        "Kaydı gönder",
+        "Sapma Bildiren · Initiator",
+        "deviation.create",
+        "Taslağı kontrol eder ve gönderir.",
+        "Initiator görevi kapanır; atama matrisi RPN, sapma türü ve bölüme göre ProcessAuthority görevini uygun KG kullanıcısına verir.",
+        "Eşleşen etkin M.01 atama kuralı ve atanabilir KG kullanıcısı bulunmalıdır.",
+      ),
+      step(
+        "Ön incelemeyi tamamla",
+        "İşlem Yetkilisi · ProcessAuthority",
+        "deviation.manage + kayıt görevi",
+        "Kapsamı ve ilk aksiyonları inceler, karar notunu girer ve araştırmaya gönderir.",
+        "Elektronik imza alınır; kayıt Investigation durumuna geçer ve Investigator görevi açılır.",
+        "Kaydı oluşturan kişi kendi kalite kararını veremez; parola ve imza anlamı yeniden doğrulanır.",
+      ),
+      step(
+        "Araştırmayı kaydet",
+        "Araştırmacı · Investigator",
+        "deviation.investigate + kayıt görevi",
+        "Yöntem, kök neden kategorisi, bulgular ve araştırma sonucunu kaydeder; ardından araştırmayı tamamlar.",
+        "En az bir tamamlanmış araştırma ile kayıt ImpactAssessment aşamasına geçer.",
+        "Yalnız atanmış araştırmacı veya kapsamı M.01 olan etkin delege işlem yapabilir.",
+      ),
+      step(
+        "Batch/seri etkisini değerlendir",
+        "Araştırmacı · Investigator",
+        "deviation.investigate + kayıt görevi",
+        "Etkilenen batch veya serileri, etki açıklamasını ve dispozisyon kararını ayrı ayrı kaydeder.",
+        "Tüm güncel batch kararları kesinleşince kayıt QualityAssessment aşamasına ve Evaluator görevine geçer.",
+        "Pending dispozisyonlu batch/seri varsa geçiş engellenir.",
+      ),
+      step(
+        "KG değerlendirmesini onayla",
+        "Değerlendiren · Evaluator",
+        "deviation.manage + kayıt görevi",
+        "Kalite değerlendirme notunu, etkinlik gerekliliğini ve ilişkili DÖF durumunu karara bağlar.",
+        "DÖF gerekiyorsa ActionImplementation; yalnız etkinlik gerekiyorsa EffectivenessReview; aksi halde ClosureApproval açılır.",
+        "Majör/kritik veya DÖF gerekli kayıtta ilişkili M.02 bulunmalıdır. Karar elektronik imzalıdır.",
+      ),
+      step(
+        "Bağlı DÖF aksiyonlarını izle",
+        "İşlem Yetkilisi · ProcessAuthority",
+        "deviation.manage + kayıt görevi",
+        "Sapma içinden ilişkili M.02 kayıtlarını izler ve tümünün kapandığını doğrular.",
+        "Bağlı DÖF'ler kapalıysa süreç etkinlik incelemesine veya kapanış onayına ilerler.",
+        "En az bir bağlı DÖF olmalı ve açık hiçbir ilişkili DÖF kalmamalıdır.",
+      ),
+      step(
+        "Etkinliği doğrula",
+        "Değerlendiren · Evaluator",
+        "deviation.manage + kayıt görevi",
+        "Tekrar oluşumu, başarı kriterini ve gözlem kanıtını değerlendirerek etkili/etkisiz kararını imzalar.",
+        "Etkili sonuç ClosureApproval açar; etkisiz sonuç kayıt üzerinde yeni aksiyon gerektirir.",
+        "Karar notu, parola ve elektronik imza anlamı zorunludur.",
+      ),
+      step(
+        "Sapmayı kapat",
+        "Onaylayan · Approver",
+        "deviation.manage + kayıt görevi",
+        "Kapanış gerekçesini girer, açık görev ve bağımlılıkları kontrol ederek nihai onayı verir.",
+        "Kayıt Closed olur, kalite kaydı kapanır ve nihai rapor üretilir.",
+        "Oluşturan kişi kapanış onayı veremez; açık DÖF/bağımlılık ve eksik elektronik imza kapanışı engeller.",
+      ),
+    ],
+    roles: [
+      { role: "DeviationReporter", taskRole: "Initiator", permission: "deviation.create", responsibility: "Sapmayı oluşturur, risk girdilerini tamamlar ve gönderir." },
+      { role: "QualityAssurance", taskRole: "ProcessAuthority", permission: "deviation.manage", responsibility: "Ön incelemeyi ve bağlı DÖF aksiyon kontrolünü yürütür." },
+      { role: "Investigator", taskRole: "Investigator", permission: "deviation.investigate", responsibility: "Araştırmayı ve batch/seri etki değerlendirmesini tamamlar." },
+      { role: "QualityAssurance", taskRole: "Evaluator", permission: "deviation.manage", responsibility: "KG ve etkinlik kararlarını elektronik imzayla verir." },
+      { role: "Approver", taskRole: "Approver", permission: "deviation.manage", responsibility: "Bağımsız nihai kapanış onayını verir." },
     ],
     rules: [
-      "Majör ve kritik sapmalar ilişkili DÖF olmadan ilerleyemez.",
-      "Kararı bekleyen batch/seri varken KG değerlendirmesi tamamlanamaz.",
-      "Açık DÖF veya bağımlılık varken sapma kapatılamaz.",
-    ],
-    connections: ["M.02 DÖF Yönetimi", "Doküman", "Eğitim", "Risk", "Denetim"],
-  },
-  "M.02": {
-    title: "DÖF Yönetimi ekran simülasyonu",
-    summary:
-      "Örnek bir DÖF kaydının kapsam onayından aksiyon kanıtı, KG doğrulaması, etkinlik ve kapanışa kadar ilerleyişini izleyin.",
-    recordNumber: "DÖF-2026-000064",
-    recordTitle: "Dolum sıcaklık kontrolünün iyileştirilmesi",
-    stages: [
-      {
-        title: "Taslak",
-        text: "Problem, doğrulanmış kök neden, acil düzeltme, sorumlu ve hedef tarih tanımlanır.",
-        role: "Kalite Güvence",
-        guard:
-          "Etkinlik gerekiyorsa yöntem ve başarı kriterleri baştan tanımlanır.",
-      },
-      {
-        title: "Kapsam onayı",
-        text: "DÖF kapsamının kök nedeni ve etkilenen süreci yeterince kapsayıp kapsamadığı incelenir.",
-        role: "Onaylayan",
-        guard: "Kaydı oluşturan kullanıcı kapsam onayını veremez.",
-      },
-      {
-        title: "Kök neden onayı",
-        text: "Kök neden kanıtları kontrol edilir ve aksiyon planlamaya geçiş kararı verilir.",
-        role: "Onaylayan",
-        guard: "Doğrulanmamış kök neden üzerinden aksiyon planlanamaz.",
-      },
-      {
-        title: "Aksiyon planı",
-        text: "Düzeltici ve önleyici aksiyonlara ayrı sorumlu, hedef tarih ve açıklama atanır.",
-        role: "İşlem yetkilisi",
-        guard: "En az bir aksiyon olmadan plan onayına gönderilemez.",
-      },
-      {
-        title: "Plan onayı",
-        text: "Sorumlular, tarihler ve etkinlik planı onayla birlikte sabitlenir.",
-        role: "Onaylayan",
-        guard: "Onay sonrasında değişiklikler yeni revizyon olarak izlenir.",
-      },
-      {
-        title: "Uygulama",
-        text: "Aksiyon sorumlusu tamamlanma kanıtını yükleyerek KG doğrulaması ister.",
-        role: "Aksiyon sorumlusu",
-        guard: "Tamamlandı bildirimi, KG doğrulaması anlamına gelmez.",
-      },
-      {
-        title: "KG doğrulaması",
-        text: "Kanıt ile planlanan aksiyon karşılaştırılır; uygun bulunur veya revizyona gönderilir.",
-        role: "Değerlendiren",
-        guard: "Tüm aksiyonlar doğrulanmadan süreç ilerleyemez.",
-      },
-      {
-        title: "Etkinlik bekleme",
-        text: "Onaylı gözlem süresi sistem tarafından takip edilir ve hedef gün görünür.",
-        role: "Sistem / KG",
-        guard: "Gözlem süresi dolmadan etkinlik değerlendirmesi açılamaz.",
-      },
-      {
-        title: "Etkinlik kararı",
-        text: "Başarı kriterleri ölçüm sonuçlarıyla karşılaştırılarak etkili/etkisiz kararı verilir.",
-        role: "Değerlendiren",
-        guard: "Etkisiz sonuç DÖF’ü aksiyon planlamaya geri döndürür.",
-      },
-      {
-        title: "Kapanış",
-        text: "Aksiyon, kanıt, etkinlik ve açık bağımlılık kontrolleri tamamlanarak DÖF kapatılır.",
-        role: "Onaylayan",
-        guard:
-          "Maker-checker ve eksiksiz kanıt zinciri API tarafından doğrulanır.",
-      },
-    ],
-    rules: [
-      "Aksiyon sahibinin “tamamlandı” bildirimi KG doğrulaması yerine geçmez.",
-      "Tüm aksiyonlar kanıtla tamamlanmadan doğrulama aşamasına geçilemez.",
-      "Başarısız etkinlik sonucu DÖF’ü aksiyon planlamaya geri döndürür.",
+      "Sistem rolü tek başına yeterli değildir; kullanıcı ilgili kaydın etkin görevine de atanmış olmalıdır.",
+      "M.01 atama matrisi ProcessAuthority, Investigator, Evaluator ve Approver görevlerini sapma türü, bölüm ve minimum RPN'e göre dağıtır.",
+      "Ön inceleme, KG kararı, etkinlik ve kapanış geçişleri yeniden parola girilen elektronik imzadır.",
+      "ALL veya M.01 kapsamlı, tarih aralığı geçerli delegasyon atanan kullanıcı adına işlem yapabilir.",
     ],
     connections: [
-      "M.01 Sapma Yönetimi",
-      "Şikayet",
-      "Denetim",
-      "Değişiklik",
-      "Doküman ve Eğitim",
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.01 → M.02 → M.01",
+        trigger: "M.01 detayından DÖF oluşturulurken CreateCapaRequest.SourceDeviationId alanına sapma kimliği gönderilir.",
+        communication: "M.02 kaydı SourceDeviationId ile M.01'e bağlanır. M.01 detay servisi aynı kimlikle bağlı DÖF listesini ve her DÖF'ün durumunu sorgular. Aynı sapma için ikinci DÖF oluşturma isteği mevcut kaydı döndürür.",
+        data: "Sapma kimliği, kaynak türü, başlık/problem, kök neden, acil aksiyon, DÖF sahibi, hedef tarih ve etkinlik planı.",
+        dependency: "DÖF gerekli M.01 kaydı bağlantı olmadan KG değerlendirmesini geçemez. ActionImplementation ve nihai kapanışta SourceDeviationId ile bağlı açık DÖF aranır; tümü Closed olmadan M.01 ilerlemez.",
+      },
+      {
+        process: "M.06 · Müşteri Şikâyetleri",
+        direction: "M.06 → M.01",
+        trigger: "M.06 complete-triage geçişinde ComplaintType=ProductQuality ve önem derecesi Minor dışında ise M.01 kaydı otomatik oluşturulur.",
+        communication: "M.06, oluşturduğu sapmanın kimliğini Complaint.LinkedDeviationId alanında saklar. M.01 audit event'i kaynak complaintId, product ve batchNumber değerlerini taşır.",
+        data: "Ürün ve batch, şikâyet açıklaması, olay/alınma zamanı, önemden türetilen şiddet, trendden türetilen olasılık; sapma türü “Müşteri Şikâyeti” olarak atanır.",
+        dependency: "Bağlantı triyaj işlemiyle aynı veritabanı transaction'ında oluşturulur. M.01 kapanışı M.06 durumunu sorgulamaz; bu bağ kodda izlenebilirlik yönündedir.",
+      },
+      {
+        process: "M.03 · Değişiklik Kontrol",
+        direction: "M.01 → M.02 → M.03 (dolaylı)",
+        trigger: "M.01'e bağlı DÖF üzerinden yeni M.03 kaydı açılırken DÖF kimliği SourceCapaId olarak seçilebilir.",
+        communication: "M.03 doğrudan sapma kimliği tutmaz; kaynak numarası M.02 SourceCapaId ilişkisi üzerinden gösterilir.",
+        data: "M.01 kimliği M.02 SourceDeviationId'de, M.02 kimliği M.03 SourceCapaId'de tutulur.",
+        dependency: "M.01 servisi M.03 durumunu doğrudan sorgulamaz. M.01'in teknik kapanış kapısı bağlı M.02 durumudur.",
+      },
+    ],
+  },
+  "M.02": {
+    name: "DÖF Yönetimi",
+    purpose:
+      "Doğrulanmış bir problem ve kök nedeni, sahipli aksiyonlar, kanıt, KG doğrulaması ve etkinlik ölçümüyle kalıcı olarak ortadan kaldırır.",
+    entry:
+      "DÖF Yönetimi listesinden bağımsız DÖF açılabilir; ayrıca M.01 sapma, şikâyet veya denetim bulgusu kaynaklı DÖF sistem tarafından bağlanabilir. Oluşturma/planlama için capa.plan gerekir.",
+    steps: [
+      step("DÖF kaydını oluştur", "DÖF Başlatan · Initiator", "capa.plan", "Başlık, problem, doğrulanmış kök neden, acil düzeltme, sorumlu, hedef tarih ve gerekiyorsa etkinlik planını girer.", "Taslak DÖF ve Initiator görevi oluşur; kaynak M.01 varsa iki kayıt ilişkilendirilir.", "Etkinlik seçildiyse yöntem, numune, gözlem süresi ve başarı kriteri zorunludur."),
+      step("Kapsam onayına gönder", "DÖF Başlatan · Initiator", "capa.plan + kayıt görevi", "Taslağı gönderir.", "Kayıt ScopeApproval olur ve oluşturandan farklı Approver atanır.", "Maker-checker gereği oluşturan kullanıcı onay adımlarını veremez."),
+      step("Kapsamı onayla", "Onaylayan · Approver", "capa.manage + kayıt görevi", "DÖF kapsamının problemi, kaynağı ve etkilenen süreci yeterince kapsadığını değerlendirip onaylar.", "Kayıt RootCauseApproval durumuna geçer; aynı kayıt bazlı Approver görevi kök neden kararı için devam eder.", "Kaydı oluşturan kullanıcı kapsam onayını veremez; karar elektronik imzalıdır."),
+      step("Kök nedeni onayla", "Onaylayan · Approver", "capa.manage + kayıt görevi", "Doğrulanmış kök neden açıklamasını ve kanıtını kontrol ederek onaylar.", "ActionPlanning açılır; Approver görevi kapanır ve oluşturandan farklı QualityAssurance kullanıcısına ProcessAuthority görevi atanır.", "Kök neden doğrulanmadan aksiyon planı hazırlanamaz; karar elektronik imzalıdır."),
+      step("Aksiyon planını hazırla", "İşlem Yetkilisi · ProcessAuthority", "capa.plan + kayıt görevi", "Her düzeltici/önleyici aksiyona açıklama, etkin kullanıcı sahibi ve hedef tarih ekler; planı onaya gönderir.", "PlanApproval aşaması ve bağımsız Approver görevi açılır.", "En az bir aksiyon olmalı; aksiyon sahibi ActionOwner veya QualityAssurance rolündeki etkin kullanıcı olmalıdır."),
+      step("Planı onayla", "Onaylayan · Approver", "capa.manage + kayıt görevi", "Aksiyon kapsamı, sahipleri, tarihler ve etkinlik planını elektronik imzayla onaylar.", "Her aksiyon sahibine kayıt bazlı ActionOwner görevi atanır ve Implementation başlar.", "Onaydan sonra tamamlanma kanıtı aksiyon bazında izlenir."),
+      step("Aksiyonu tamamlanmak üzere gönder", "Aksiyon Sahibi · ActionOwner", "capa.complete-action + aksiyon görevi", "Kendi aksiyonuna uygulama kanıtını girer ve KG doğrulamasına gönderir.", "Tüm aksiyonlar kanıtla bildirildiğinde ActionVerification aşaması açılır.", "“Tamamlandı” bildirimi KG onayı değildir; kullanıcı yalnız kendisine atanmış aksiyonda işlem yapar."),
+      step("Aksiyon kanıtlarını doğrula", "Değerlendiren · Evaluator", "capa.verify + kayıt görevi", "Her kanıtı planlanan çıktı ile karşılaştırır; onaylar veya gerekçeyle sahibine geri gönderir.", "Tüm aksiyonlar onaylanınca etkinlik gerekiyorsa EffectivenessWaiting, gerekmiyorsa ClosureApproval açılır.", "Tek reddedilen aksiyon sahibine yeni görev açar ve sürecin ilerlemesini durdurur."),
+      step("Etkinlik bekleme süresini tamamla", "Değerlendiren · Evaluator", "capa.verify + kayıt görevi", "Onaylı gözlem süresi ve etkinlik hedef tarihi dolduğunda incelemeyi başlatır.", "Kayıt EffectivenessWaiting durumundan EffectivenessReview durumuna geçer.", "Gözlem süresi dolmadan etkinlik incelemesi başlatılamaz."),
+      step("Etkinlik sonucunu kararla", "Değerlendiren · Evaluator", "capa.verify + kayıt görevi", "Ölçüm sonuçlarını yöntem, numune ve başarı kriteriyle karşılaştırıp etkili/etkisiz kararını verir.", "Etkili sonuç ClosureApproval açar; etkisiz sonuç DÖF'ü ActionPlanning'e geri döndürür.", "Sonuç notu, yeniden parola ve elektronik imza anlamı zorunludur."),
+      step("DÖF kaydını kapat", "Onaylayan · Approver", "capa.manage + kayıt görevi", "Tüm aksiyon, kanıt ve etkinlik zincirini kontrol edip kapanış notunu imzalar.", "DÖF Closed olur; kaynak M.01 veya denetim kapanış kapısı bu durumu okuyabilir.", "Oluşturan kullanıcı kapatamaz; açık görev, eksik kanıt veya başarısız etkinlik kapanışı engeller."),
+    ],
+    roles: [
+      { role: "QualityAssurance", taskRole: "Initiator / ProcessAuthority", permission: "capa.plan", responsibility: "DÖF'ü açar, kapsamı tanımlar ve aksiyon planını hazırlar." },
+      { role: "Approver", taskRole: "Approver", permission: "capa.manage", responsibility: "Kapsam, kök neden, plan ve kapanış onaylarını verir." },
+      { role: "ActionOwner", taskRole: "Action:{id}", permission: "capa.complete-action", responsibility: "Kendisine atanan aksiyonu kanıtıyla tamamlanmaya gönderir." },
+      { role: "QualityAssurance", taskRole: "Evaluator", permission: "capa.verify", responsibility: "Aksiyon kanıtlarını ve etkinliği bağımsız olarak doğrular." },
+    ],
+    rules: [
+      "Yetki, sistem rolü/permission ile kayıt veya aksiyon bazlı etkin görevin birlikte sağlanmasıyla oluşur.",
+      "Kapsam, kök neden, plan, etkinlik ve kapanış onaylarında görev ayrılığı uygulanır.",
+      "ALL veya M.02 kapsamlı geçerli delegasyon, atanmış görev sahibinin yetkisini süreli olarak devredebilir.",
+      "Kaynak M.01, şikâyet veya denetim kaydı DÖF kapanmadan kendi kapanış kapısını geçemez.",
+    ],
+    connections: [
+      {
+        process: "M.01 · Sapma Yönetimi",
+        direction: "M.01 → M.02 → M.01",
+        trigger: "DÖF, SourceDeviationId verilerek oluşturulur; kaynak sapmanın varlığı doğrulanır ve aynı sapma için tek kayıt korunur.",
+        communication: "M.02 SourceDeviationId ve kaynak kayıt numarasını döndürür. M.01 bağlı DÖF'leri SourceDeviationId ile sorgular.",
+        data: "Kaynak sapma kimliği ve numarası; DÖF başlığı, problem, kök neden, aksiyonlar, hedef tarih, durum ve etkinlik sonucu.",
+        dependency: "M.01, bağlı M.02 kaydı Closed değilse ilişkili aksiyon ve kapanış geçişlerini reddeder.",
+      },
+      {
+        process: "M.06 · Müşteri Şikâyetleri",
+        direction: "M.06 → M.02",
+        trigger: "M.06 CapaDecision aşamasında CapaRequired=true kararı verildiğinde M.02 kaydı aynı transaction içinde otomatik oluşturulur.",
+        communication: "M.06 oluşturulan DÖF kimliğini Complaint.LinkedCapaId alanında saklar; M.02 audit event'i complaintId ve complaintNumber taşır. M.02 üzerinde SourceType=Complaint kullanılır.",
+        data: "Ürün bazlı DÖF başlığı, şikâyet açıklaması, doğrulanmış kök neden, müşteri etkisi acil aksiyonu, sahip, hedef tarih ve trend etkinlik planı.",
+        dependency: "CapaRequired=true iken LinkedCapaId olmadan M.06 FinalResponseApproval'a geçemez. M.06 Close metodu M.02 durumunu sorgulamaz; kapanış kapısı onaylı nihai yanıt ve gerekiyorsa FV aktarımıdır.",
+      },
+      {
+        process: "M.07 / M.08 / M.09 · Denetim Bulguları",
+        direction: "Denetim bulgusu → M.02 → bulgu",
+        trigger: "M.07'de risk skoru 12 ve üzeri; M.08/M.09'da Major veya Critical sınıfı ya da kullanıcının CapaRequired seçimi M.02'yi bulguyla birlikte oluşturur.",
+        communication: "Bulgu LinkedCapaId tutar; M.02 SourceType sırasıyla InternalAudit, ExternalAudit veya SupplierAudit olur. Her iki kaydın audit event'i karşı kaydın kimliğini taşır.",
+        data: "Bulgu başlığı/açıklaması/referansı, bulgu sahibi, cevap hedefi, kaynak denetim kimliği ve kaynağa özel etkinlik yöntemi.",
+        dependency: "Denetim bulgusu kapanırken LinkedCapaId ile M.02 Status=Closed kontrol edilir. DÖF açıkken bulgu; bulgular açıkken denetim kapanamaz.",
+      },
+      {
+        process: "M.03 · Değişiklik Kontrol",
+        direction: "M.02 → M.03",
+        trigger: "M.03 oluşturma isteğinde isteğe bağlı SourceCapaId seçilir ve kaynak DÖF'ün varlığı doğrulanır.",
+        communication: "M.03 SourceCapaId alanını saklar ve listede/detayda DÖF kayıt numarasını join ile gösterir.",
+        data: "Yalnız DÖF kimliği doğrudan taşınır; değişiklik kapsamı, risk ve plan verileri M.03 formunda ayrıca girilir.",
+        dependency: "Kodda M.02 kapanışını M.03 durumuna bağlayan karşılıklı bir kapanış kontrolü yoktur; ilişki kaynak izlenebilirliği sağlar.",
+      },
     ],
   },
   "M.03": {
-    title: "Değişiklik Kontrol ekran simülasyonu",
-    summary:
-      "Örnek bir proses değişikliğinin paralel bölüm ve ruhsat değerlendirmelerinden kurul kararına, kanıtlı uygulamaya, devreye alma ve nihai kapanışa ilerleyişini izleyin.",
-    recordNumber: "DK-2026-000042",
-    recordTitle: "Dolum hattı alarm parametresi değişikliği",
-    stages: [
-      {
-        title: "Taslak",
-        text: "Mevcut ve önerilen durum, gerekçe, kapsam, risk, etkilenen bölümler ve geri dönüş planı birlikte kaydedilir.",
-        role: "Değişiklik başlatan",
-        guard:
-          "Geri dönüş planı ve en az bir etkilenen bölüm olmadan kayıt oluşturulamaz.",
-      },
-      {
-        title: "Ön değerlendirme",
-        text: "KG değişikliğin sınıfını, riskini, geçici/kalıcı niteliğini ve değerlendirme kapsamını doğrular.",
-        role: "KG değerlendiricisi",
-        guard:
-          "Kaydı oluşturan kullanıcı kendi ön değerlendirmesini onaylayamaz.",
-      },
-      {
-        title: "Paralel değerlendirme",
-        text: "Üretim, KG, validasyon ve gerekiyorsa Ruhsatlandırma etkilerini eş zamanlı değerlendirir.",
-        role: "Bölüm / Ruhsat",
-        guard:
-          "Tüm bölüm görüşleri uygun olmadan değişiklik kuruluna geçilemez.",
-      },
-      {
-        title: "Kurul kararı",
-        text: "Değişiklik kurulu fayda, risk, kaynak ve düzenleyici etkileri tek karar ekranında değerlendirir.",
-        role: "Değişiklik kurulu",
-        guard: "Reddedilen etki değerlendirmesi varken kurul onayı verilemez.",
-      },
-      {
-        title: "Plan onayı",
-        text: "Doküman, eğitim, validasyon, risk ve teknik uygulama aksiyonları sahip ve tarihle sabitlenir.",
-        role: "Plan onaylayanı",
-        guard: "En az bir uygulama aksiyonu olmadan plan onaylanamaz.",
-      },
-      {
-        title: "Uygulama",
-        text: "Aksiyon sorumluları kanıt yükler; KG her kanıtı planlanan çıktı ile karşılaştırarak doğrular.",
-        role: "Aksiyon sahibi / KG",
-        guard: "Doğrulanmamış aksiyon devreye alma kapısını kapalı tutar.",
-      },
-      {
-        title: "Devreye alma",
-        text: "Tamamlanan plan, otorite belgesi ve bağımlılıklar kontrol edilerek ayrı elektronik imzayla devreye alınır.",
-        role: "Devreye alma onaylayanı",
-        guard:
-          "Devreye alma onayı nihai kapanış değildir; ayrı zaman damgası tutulur.",
-      },
-      {
-        title: "Sonrası doğrulama",
-        text: "Yeni durumun hedeflenen sonucu verdiği ve beklenmeyen etki oluşturmadığı kanıtla doğrulanır.",
-        role: "KG değerlendiricisi",
-        guard: "Başarısız sonuç kontrollü geri dönüş planını çalıştırır.",
-      },
-      {
-        title: "Nihai kapanış",
-        text: "Açık görev, doküman, eğitim, validasyon, risk ve olay bağımlılıkları son kez kontrol edilerek kayıt kapatılır.",
-        role: "Kapanış onaylayanı",
-        guard: "Devreye alma ve kapanış aynı kullanıcı ve aynı imza olamaz.",
-      },
+    name: "Değişiklik Kontrol",
+    purpose: "Bir proses, ekipman, doküman veya ürün değişikliğini etki değerlendirmeleri ve bağımsız onaylarla kontrollü biçimde devreye alır.",
+    entry: "Değişiklik Kontrol listesinden yeni kayıt açılır. change.create izni, geri dönüş planı ve en az bir etkilenen bölüm gerekir.",
+    steps: [
+      step("Talebi oluştur ve gönder", "Başlatan · Initiator", "change.create", "Mevcut/önerilen durum, gerekçe, kapsam, risk, bölümler ve geri dönüş planını girer.", "PreliminaryReview ve KG ProcessAuthority görevi açılır.", "Oluşturan kendi onayını veremez."),
+      step("Ön değerlendirmeyi tamamla", "KG · ProcessAuthority", "change.review + kayıt görevi", "Sınıf, risk, süre ve bölüm kapsamını doğrular.", "DepartmentReview başlar; bölüm/Ruhsat değerlendirme görevleri açılır.", "Tüm değerlendirme sahipleri etkin kullanıcı olmalıdır."),
+      step("Paralel etkileri değerlendir", "Bölüm İnceleyicileri + Evaluator", "change.review + değerlendirme görevi", "Her bölüm etki, gereksinim ve kararını girer; KG kurula gönderir.", "BoardReview ve ChangeBoard görevi açılır.", "Tüm bölüm görüşleri tamamlanmadan kurul geçişi açılmaz."),
+      step("Kurul ve plan onayı", "ChangeBoard → Approver", "change.approve", "Kurul kararı imzalanır; doküman, eğitim, validasyon ve uygulama aksiyonları planlanıp onaylanır.", "Implementation ve aksiyon sahibi görevleri açılır.", "Reddedilmiş etki ve aksiyonsuz plan ilerleyemez."),
+      step("Uygula ve doğrula", "Aksiyon Sahibi + Evaluator", "change.execute / change.review", "Sahipler kanıt yükler, KG kanıtları doğrular ve devreye alma onayına gönderir.", "CommissioningApproval açılır.", "Doğrulanmamış aksiyon devreye almayı engeller."),
+      step("Devreye al", "Approver", "change.approve + kayıt görevi", "Otorite belgesi ve bağımlılıkları kontrol ederek elektronik imza verir.", "PostImplementationVerification başlar.", "Devreye alma nihai kapanış değildir; gerektiğinde kontrollü rollback kullanılabilir."),
+      step("Sonucu doğrula ve kapat", "Evaluator → Approver", "change.review / change.approve", "Uygulama sonucunu doğrular; başarılıysa kapanış onayına, başarısızsa rollback'e yönlendirir.", "Başarılı bağımsız onayla kayıt kapanır.", "Devreye alma ve kapanış ayrı imza ve görevlerdir."),
     ],
-    rules: [
-      "Devreye alma onayı ile nihai kapanış iki ayrı elektronik imzadır.",
-      "Otorite onayı gereken değişiklik belge referansı olmadan devreye alınamaz.",
-      "Başarısız uygulama kontrollü geri dönüşe ve gerekirse sapma kaydına yönlenir.",
+    roles: [
+      { role: "QualityAssurance / DepartmentManager", taskRole: "Initiator", permission: "change.create", responsibility: "Değişikliği başlatır." },
+      { role: "QualityAssurance", taskRole: "ProcessAuthority / Evaluator", permission: "change.review", responsibility: "Ön inceleme, paralel etki ve uygulama doğrulamasını yürütür." },
+      { role: "RegulatoryAffairs / DepartmentManager", taskRole: "Assessment:{id}", permission: "change.review", responsibility: "Kendi bölüm veya ruhsat etkisini değerlendirir." },
+      { role: "Approver", taskRole: "ChangeBoard / Approver", permission: "change.approve", responsibility: "Kurul, plan, devreye alma ve kapanış kararlarını verir." },
+      { role: "ActionOwner", taskRole: "Action:{id}", permission: "change.execute", responsibility: "Atanmış uygulama aksiyonunun kanıtını tamamlar." },
     ],
+    rules: ["Tüm etki değerlendirmeleri tamamlanmadan kurul kararı verilemez.", "Otorite onayı gereken değişiklik belge referansı olmadan devreye alınamaz.", "Başarısız uygulama kontrollü geri dönüşe yönlendirilir."],
     connections: [
-      "M.02 DÖF",
-      "M.04 Doküman",
-      "M.05 Eğitim",
-      "M.11 Risk",
-      "MBR",
-      "Tedarikçi",
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.02 → M.03",
+        trigger: "Yeni değişiklik kaydında SourceCapaId seçilirse backend kaynak DÖF'ün varlığını doğrular.",
+        communication: "M.03 SourceCapaId saklar; M.02 kayıt numarası liste ve detay sorgularında join ile okunur.",
+        data: "Kaynak DÖF kimliği ve kayıt numarası. Değişikliğin mevcut/önerilen durumu ve uygulama planı otomatik kopyalanmaz.",
+        dependency: "M.03 geçişleri M.02 Status değerini sorgulamaz; bağlantı kodda kaynak kaydı gösteren izlenebilirlik bağıdır.",
+      },
+      {
+        process: "M.04 · Doküman Yönetimi",
+        direction: "M.03 → M.04",
+        trigger: "Yeni doküman oluşturulurken isteğe bağlı SourceChangeControlId seçilir ve M.03 kaydının varlığı doğrulanır.",
+        communication: "M.04 SourceChangeControlId saklar ve M.03 kayıt numarasını listede/detayda join ile gösterir.",
+        data: "Kaynak değişiklik kimliği ve numarası. Doküman kodu, içerik, incelemeler ve eğitim gereksinimleri M.04 formunda ayrıca tanımlanır.",
+        dependency: "M.03 servisi bağlı M.04 dokümanlarını veya durumlarını sorgulamaz; M.03 kapanışı doküman durumuyla teknik olarak bloke edilmez.",
+      },
+      {
+        process: "M.05 · Eğitim Yönetimi",
+        direction: "M.03 → M.04 → M.05 (dolaylı)",
+        trigger: "M.03 kaynaklı M.04 sürümü onaylandığında ve eğitim gereksinimi varsa M.05 görevleri oluşturulur.",
+        communication: "M.05 doğrudan SourceChangeControlId tutmaz; zincir ControlledDocument.SourceChangeControlId ve TrainingAssignment.ControlledDocumentId üzerinden kurulur.",
+        data: "M.03 kimliği M.04'te; doküman, sürüm, gereksinim ve çalışan bilgileri M.05'te tutulur.",
+        dependency: "M.03 kapanışı M.05'i sorgulamaz. Eğitim kapısı M.04 release işlemini bloke eder.",
+      },
     ],
   },
   "M.04": {
-    title: "Doküman Yönetimi ekran simülasyonu",
-    summary:
-      "Bir SOP’nin taslaktan bölüm incelemelerine, onaya, zorunlu eğitime, kontrollü dağıtıma, revizyona ve arşive kadar ilerleyişini ekran ekran izleyin.",
-    recordNumber: "DOC-2026-000031",
-    recordTitle: "SOP-URT-014 · Dolum hattı temizlik prosedürü",
-    stages: [
-      {
-        title: "Taslak",
-        text: "Kod, tür, sahip, gizlilik, içerik, gözden geçirme periyodu ve M.03 kaynağı birlikte tanımlanır.",
-        role: "Doküman kontrol",
-        guard:
-          "Doküman kodu benzersizdir; ilk sürüm ve değişiklik özeti zorunludur.",
-      },
-      {
-        title: "Yazım",
-        text: "Doküman sahibi kontrollü içeriği tamamlar ve sürüm özetini günceller.",
-        role: "Doküman yazarı",
-        guard:
-          "İncelemeye gönderildikten sonra aynı sürümün içeriği değiştirilemez.",
-      },
-      {
-        title: "İnceleme",
-        text: "İlgili bölümler ve Kalite Güvence aynı sürümü paralel olarak değerlendirir.",
-        role: "Bölüm inceleyicileri",
-        guard: "Bekleyen veya revizyon isteyen görüş varken onaya geçilemez.",
-      },
-      {
-        title: "Onay",
-        text: "İncelemeleri tamamlanan sürüm görev ayrılığı kontrolüyle elektronik olarak onaylanır.",
-        role: "Doküman onaylayanı",
-        guard: "Dokümanı hazırlayan kullanıcı kendi sürüm onayını veremez.",
-      },
-      {
-        title: "Eğitim kapısı",
-        text: "Etkilenen pozisyonların eğitimleri ve sınav kanıtları sürüme bağlanır.",
-        role: "Eğitim koordinatörü",
-        guard: "Zorunlu eğitimler tamamlanmadan doküman yürürlüğe alınamaz.",
-      },
-      {
-        title: "Yürürlük",
-        text: "Planlanan tarihte onaylı sürüm yürürlüğe alınır; önceki sürüm otomatik olarak geçersizleşir.",
-        role: "Kalite Güvence",
-        guard: "Yalnız onaylı ve eğitim kapısı kapanmış sürüm yayımlanabilir.",
-      },
-      {
-        title: "Dağıtım ve okuma",
-        text: "Elektronik okuma kanıtları ile numaralı basılı kontrollü kopyalar izlenir.",
-        role: "Kullanıcı / Doküman kontrol",
-        guard:
-          "Her kullanıcı ve kopya için değiştirilemez zaman damgası tutulur.",
-      },
-      {
-        title: "Revizyon",
-        text: "Majör veya minör yeni sürüm açılır; önceki içerik karşılaştırma için korunur.",
-        role: "Doküman kontrol",
-        guard:
-          "Yürürlükteki sürüm doğrudan değiştirilemez; yeni revizyon zorunludur.",
-      },
-      {
-        title: "Arşiv",
-        text: "Yürürlükten kaldırılan doküman, tüm basılı kopyalar iade veya imha edildikten sonra arşivlenir.",
-        role: "Doküman kontrol",
-        guard: "Dağıtımda kontrollü kopya varken arşiv işlemi engellenir.",
-      },
+    name: "Doküman Yönetimi",
+    purpose: "Kontrollü dokümanları yazım, paralel inceleme, onay, eğitim kapısı, yürürlük, revizyon ve arşiv boyunca sürüm bazında yönetir.",
+    entry: "Yeni doküman için document.create gerekir. Yürürlükteki doküman doğrudan düzenlenmez; DocumentCoordinator “Revizyon talep et” işlemini başlatır.",
+    steps: [
+      step("Dokümanı oluştur ve yaz", "Doküman Kontrol / Yazar · DocumentAuthor", "document.create + document.write", "Kod, tür, sahip, gizlilik, gözden geçirme dönemi ve ilk sürüm içeriğini tanımlar; yazımı başlatıp tamamlar.", "Review aşaması açılır.", "Kod benzersizdir; incelemeye gönderilen sürümün içeriği kilitlenir."),
+      step("Paralel incelemeleri tamamla", "Bölüm İnceleyicileri · DocumentReview:{id}", "document.review + kayıt görevi", "Atanmış bölümler aynı sürüme görüş verir; koordinatör onaya gönderir.", "Approval ve DocumentApprover görevi açılır.", "Bekleyen veya revizyon isteyen inceleme varken geçiş olmaz."),
+      step("Sürümü onayla", "Doküman Onaylayanı · DocumentApprover", "document.approve + kayıt görevi", "İnceleme sonuçlarını kontrol edip elektronik imza verir.", "Eğitim gerekiyorsa TrainingWaiting ve M.05 görevleri; gerekmiyorsa Approved durumu oluşur.", "Hazırlayan kendi sürümünü onaylayamaz."),
+      step("Eğitim kapısını kapat", "Eğitim Koordinatörü + Çalışanlar", "training.manage / training.complete", "Etkilenen pozisyonlara atanan eğitim ve sınav görevlerini tamamlar.", "Tüm zorunlu görevler tamamlanınca doküman yürürlüğe alınabilir.", "Eksik veya başarısız zorunlu eğitim release işlemini engeller."),
+      step("Yürürlüğe al ve dağıt", "DocumentCoordinator", "document.distribute + kayıt görevi", "Onaylı sürümü planlanan tarihte imzayla yürürlüğe alır; okuma ve kontrollü kopya dağıtımlarını izler.", "Önceki sürüm geçersizleşir; yeni sürüm Effective olur.", "Her okuma ve kontrollü kopya değiştirilemez zaman damgasıyla tutulur."),
+      step("Revizyon veya periyodik inceleme başlat", "DocumentCoordinator", "document.distribute + kayıt görevi", "Effective kayıtta revizyon talebi, periyodik gözden geçirme veya yürürlükten kaldırma işlemini seçer.", "Revizyonda yeni sürüm/yazar görevi; gözden geçirmede karar görevi oluşur.", "Yürürlükteki içerik yerinde değiştirilemez."),
+      step("Yürürlükten kaldır ve arşivle", "DocumentCoordinator", "document.distribute + kayıt görevi", "Gerekçeli imzayla yürürlükten kaldırır; kontrollü kopyalar iade/imha edilince arşivler.", "Kayıt Archived olur ve geçmiş sürümler korunur.", "Dağıtımda kontrollü kopya varken arşivlenemez."),
     ],
-    rules: [
-      "Onaylı veya yürürlükteki sürüm değiştirilemez; yeni revizyon açılır.",
-      "Zorunlu pozisyon eğitimi tamamlanmadan yürürlük kapısı açılmaz.",
-      "İade edilmemiş kontrollü kopya varken doküman arşivlenemez.",
+    roles: [
+      { role: "DocumentController", taskRole: "DocumentAuthor / DocumentCoordinator", permission: "document.create, write, distribute", responsibility: "Yaşam döngüsünü, revizyonu, yürürlüğü ve dağıtımı yönetir." },
+      { role: "DepartmentManager / QualityAssurance / RegulatoryAffairs", taskRole: "DocumentReview:{id}", permission: "document.review", responsibility: "Kendi bölüm etkisi için sürümü inceler." },
+      { role: "Approver", taskRole: "DocumentApprover", permission: "document.approve", responsibility: "Sürümü bağımsız elektronik imzayla onaylar." },
+      { role: "TrainingCoordinator / Learner", taskRole: "TrainingCoordinator / Learner", permission: "training.manage / complete", responsibility: "Yürürlük öncesi zorunlu eğitim kapısını tamamlar." },
     ],
+    rules: ["Sistem rolüne ek olarak etkin kayıt görevi zorunludur.", "Onaylı/yürürlükteki sürüm değiştirilmez; yeni revizyon açılır.", "Onay, yürürlük, periyodik inceleme, geri çekme ve arşiv kararları elektronik imzalıdır."],
     connections: [
-      "M.03 Değişiklik Kontrol",
-      "M.05 Eğitim",
-      "M.07 Denetim",
-      "M.11 Risk",
-      "M.12 MBR",
-      "Form ve Şablonlar",
+      {
+        process: "M.03 · Değişiklik Kontrol",
+        direction: "M.03 → M.04",
+        trigger: "M.04 oluşturma isteğinde SourceChangeControlId verilirse kaynak M.03 kaydının varlığı doğrulanır.",
+        communication: "ControlledDocument.SourceChangeControlId kalıcı bağı tutar; kaynak kayıt numarası M.04 liste ve detay sorgularında join ile okunur.",
+        data: "M.03 kimliği ve kayıt numarası. Doküman içeriği veya aksiyonları otomatik kopyalanmaz.",
+        dependency: "M.04 iş akışı M.03 durumunu sorgulamaz; kaynak bağlantısı izlenebilirlik içindir.",
+      },
+      {
+        process: "M.05 · Eğitim Yönetimi",
+        direction: "M.04 → M.05 → M.04",
+        trigger: "M.04 approve geçişi TrainingWaiting sonucunu üretirse güncel sürümün her bekleyen pozisyon gereksinimi için etkin çalışanlara M.05 ataması oluşturulur.",
+        communication: "TrainingAssignment; ControlledDocumentId, DocumentRevisionId ve DocumentTrainingRequirementId tutar. Son bağlı çalışan görevi Completed olduğunda M.05 SyncDocumentRequirement metodu M.04 gereksinimini tamamlar ve Document audit event'i yazar.",
+        data: "Doküman kimliği/kodu, sürüm, gereksinim, pozisyon, çalışan, hedef tarih, ReadAndAcknowledge yöntemi, geçme puanı 100 ve deneme sınırı.",
+        dependency: "M.04 release, güncel sürümde Pending eğitim gereksinimi varsa reddedilir. M.05 bağlantısı olan gereksinim M.04 ekranından elle kapatılamaz.",
+      },
+      {
+        process: "M.08 · Dış Denetimler",
+        direction: "M.04 → M.08",
+        trigger: "M.08 oluşturulurken seçilen kontrollü dokümanlar denetim talep paketine alınır.",
+        communication: "ExternalAuditDocumentRequest ControlledDocumentId ile M.04'e bağlanır; doküman kodu, başlık ve gizlilik bilgisi talep kaydında tutulur. Export işleminde alıcı, amaç, kanıt ve export sürümü erişim kaydına yazılır.",
+        data: "Doküman kimliği, kodu, başlığı, gizlilik sınıfı, dışa aktarım sürümü, alıcı, amaç, kanıt ve erişim zamanı.",
+        dependency: "M.08 start-audit geçişi tüm doküman talepleri Exported olmadan açılmaz. M.04 yaşam döngüsü M.08 durumunu sorgulamaz.",
+      },
     ],
   },
   "M.05": {
-    title: "Eğitim Yönetimi ekran simülasyonu",
-    summary:
-      "Pozisyon matrisinden doğan veya M.04 sürüm onayıyla otomatik açılan bir görevin atama, okuma imzası, sınav, eğitmen onayı ve yenileme akışını izleyin.",
-    recordNumber: "EGT-2026-000087",
-    recordTitle: "SOP-URT-014 · Dolum hattı temizlik eğitimi",
-    stages: [
-      {
-        title: "Matris",
-        text: "Pozisyon için zorunlu eğitim, yöntem, geçme puanı, geçerlilik ve kritik yeterlilik tanımlanır.",
-        role: "Eğitim koordinatörü",
-        guard:
-          "Aynı pozisyon ve eğitim kodu yalnız bir etkin matris kuralına sahip olabilir.",
-      },
-      {
-        title: "Otomatik ihtiyaç",
-        text: "M.04 doküman sürümü onaylandığında etkilenen pozisyon için eğitim görevi otomatik oluşturulur.",
-        role: "Sistem / Doküman kontrol",
-        guard: "Görev tamamlanmadan bağlı doküman yürürlüğe alınamaz.",
-      },
-      {
-        title: "Atama",
-        text: "Çalışan, pozisyon, hedef tarih, yöntem ve eğitmen denetlenebilir görev kaydında sabitlenir.",
-        role: "Eğitim koordinatörü",
-        guard:
-          "Yalnız etkin çalışan atanabilir ve görev kayıt bazında yetkilendirilir.",
-      },
-      {
-        title: "Katılım ve okuma",
-        text: "Çalışan içeriği tamamlar; elektronik eğitimde okuma ve anlama beyanını imzalar.",
-        role: "Katılımcı",
-        guard: "Atanan çalışan dışındaki kullanıcı katılım kanıtı oluşturamaz.",
-      },
-      {
-        title: "Değerlendirme",
-        text: "Sınav puanı ve gerekiyorsa pratik yeterlilik kanıtı eğitmen tarafından kaydedilir.",
-        role: "Eğitmen",
-        guard:
-          "Geçme puanı ve maksimum deneme sayısı matris kuralından uygulanır.",
-      },
-      {
-        title: "Eğitmen onayı",
-        text: "Başarılı değerlendirme ayrı bir yeterlilik onayıyla tamamlanır.",
-        role: "Eğitmen / bölüm yöneticisi",
-        guard: "Çalışan kendi yeterliliğini onaylayamaz.",
-      },
-      {
-        title: "Yeterlilik",
-        text: "Tamamlanan eğitim için geçerlilik sonu hesaplanır ve kritik iş yetkisi aktif hale gelir.",
-        role: "Sistem",
-        guard: "Kritik iş yalnız süresi geçerli yeterlilikle yürütülmelidir.",
-      },
-      {
-        title: "Yenileme",
-        text: "Süre dolduğunda veya yeni doküman revizyonunda yeni eğitim ihtiyacı açılır.",
-        role: "Eğitim koordinatörü",
-        guard:
-          "Eski kanıt korunur; yenileme yeni görev ve yeni zaman damgasıdır.",
-      },
+    name: "Eğitim Yönetimi",
+    purpose: "Pozisyon veya doküman sürümünden doğan eğitim ihtiyacını atama, katılım, değerlendirme, eğitmen onayı ve yenilemeyle yönetir.",
+    entry: "TrainingCoordinator veya QualityAssurance yeni eğitim görevi planlar; M.04 onayı da etkilenen pozisyonlar için görevleri otomatik oluşturabilir.",
+    steps: [
+      step("Eğitimi planla ve ata", "Eğitim Koordinatörü", "training.manage", "Çalışan, yöntem, hedef tarih, geçme puanı, deneme sayısı ve gerekiyorsa doküman sürümünü belirler.", "Learner görevi Assigned durumunda çalışana atanır.", "Yalnız etkin çalışan ve geçerli matris/doküman ilişkisi kullanılabilir."),
+      step("Eğitimi tamamla", "Katılımcı · Learner", "training.complete + kayıt görevi", "İçeriği okur, katılım beyanını verir ve değerlendirmeye gönderir.", "Sınav sonucuna göre TrainerApproval veya Failed oluşur.", "Yalnız atanmış çalışan kendi görevini tamamlayabilir; denemeler silinmez."),
+      step("Yeterliliği onayla", "Eğitmen · Trainer", "training.approve + kayıt görevi", "Sınav/pratik kanıtı kontrol ederek elektronik yeterlilik onayı verir.", "Completed olur ve geçerlilik tarihi hesaplanır.", "Katılımcı kendi yeterliliğini onaylayamaz."),
+      step("Yenile veya süresini yönet", "Eğitim Koordinatörü", "training.manage + kayıt görevi", "Başarısız/süresi dolmuş görevi yeniden atar; tamamlanan eğitimin süresini doldu olarak işaretler.", "Yeni görev ve yeni zaman damgası oluşur; eski kanıt korunur.", "M.04'e bağlı zorunlu görev tamamlanmadan doküman release olamaz."),
     ],
-    rules: [
-      "M.04’e bağlı eğitim tamamlanmadan doküman yürürlük kapısı açılmaz.",
-      "Katılımcı kendi yeterlilik onayını veremez.",
-      "Başarısız denemeler silinmez; maksimum denemede görev başarısız olur ve yeniden atanır.",
+    roles: [
+      { role: "TrainingCoordinator / QualityAssurance", taskRole: "TrainingCoordinator", permission: "training.manage", responsibility: "Planlama, atama, yenileme ve iptali yönetir." },
+      { role: "Learner", taskRole: "Learner", permission: "training.complete", responsibility: "Kendi eğitim ve değerlendirme görevini tamamlar." },
+      { role: "Trainer / DepartmentManager", taskRole: "Trainer", permission: "training.approve", responsibility: "Yeterliliği bağımsız olarak onaylar." },
     ],
+    rules: ["Katılımcı kendi yeterliliğini onaylayamaz.", "Başarısız denemeler audit trail içinde korunur.", "Doküman kaynaklı zorunlu eğitim yürürlük için bloklayıcıdır."],
     connections: [
-      "M.04 Doküman Yönetimi",
-      "M.03 Değişiklik Kontrol",
-      "M.02 DÖF",
-      "M.01 Sapma",
-      "İK / Organizasyon",
-      "M.07 Denetim",
+      {
+        process: "M.04 · Doküman Yönetimi",
+        direction: "M.04 → M.05 → M.04",
+        trigger: "Doküman onayı TrainingWaiting oluşturduğunda M.04, etkilenen pozisyondaki her etkin çalışan için M.05 kaydı ve Learner/TrainingCoordinator görevleri üretir.",
+        communication: "M.05 kaydı doküman, sürüm ve eğitim gereksinimi kimliklerini saklar. Tüm aynı gereksinim atamaları Completed olduğunda M.05, M.04 DocumentTrainingRequirement kaydını tamamlar.",
+        data: "Doküman kodu/başlığı/sürümü, pozisyon, çalışan, gereksinim, hedef tarih, yöntem, geçme puanı ve yeterlilik kanıtı.",
+        dependency: "Bağlı gereksinim tamamlanmadan M.04 yürürlüğe alma işlemi reddedilir. M.04, M.05 bağlantılı gereksinimi manuel tamamlama isteğini de reddeder.",
+      },
+      {
+        process: "Eğitim Matrisi ↔ M.04",
+        direction: "M.04 → Eğitim Matrisi → M.05",
+        trigger: "TrainingMatrixRule oluşturulurken isteğe bağlı ControlledDocumentId seçilebilir; backend dokümanın varlığını doğrular.",
+        communication: "Matris kuralı ControlledDocumentId tutar; matris sorgusu M.04 DocumentCode değerini join ile döndürür.",
+        data: "Doküman kimliği/kodu, pozisyon, eğitim kodu/başlığı, değerlendirme yöntemi, geçme puanı, geçerlilik ve kritik yeterlilik bilgisi.",
+        dependency: "Matris bağlantısı tek başına M.04 gereksinimini kapatmaz; yürürlük kapısı yalnız DocumentTrainingRequirement bağlantılı tamamlanmış atamalarla açılır.",
+      },
     ],
   },
   "M.06": {
-    title: "Müşteri Şikâyetleri ekran simülasyonu",
-    summary:
-      "Bir müşteri bildiriminin triyajdan paralel bölüm araştırmalarına, ön ve nihai yanıt onaylarına, M.01/M.02 ve farmakovijilans bağlantılarına kadar nasıl ilerlediğini izleyin.",
-    recordNumber: "ŞK-2026-000031",
-    recordTitle: "QMS Tablet 10 mg · kırık tablet bildirimi",
-    stages: [
-      {
-        title: "Kabul",
-        text: "Kanal, müşteri, ülke, ürün, batch, olay tarihi, açıklama, numune ve yanıt hedefleri tek kayıt altında alınır.",
-        role: "Şikâyet bildiren",
-        guard:
-          "Olay tarihi, alınma tarihi ve yanıt SLA sırası API tarafından doğrulanır.",
-      },
-      {
-        title: "Triyaj",
-        text: "Önem, ürün kalitesi, sağlık etkisi, advers olay ve tekrar sinyali değerlendirilir.",
-        role: "Şikâyet koordinatörü / KG",
-        guard:
-          "Majör-kritik ürün kalitesi şikâyeti M.01 sapma kaydını otomatik açar.",
-      },
-      {
-        title: "Ön yanıt",
-        text: "Müşteriye ilk kontrol ve inceleme bilgisini veren ön yanıt ayrı bir sürüm olarak hazırlanır ve onaylanır.",
-        role: "Koordinatör / Onaylayan",
-        guard: "Onaylı ön yanıt olmadan araştırmalar başlatılamaz.",
-      },
-      {
-        title: "Paralel araştırma",
-        text: "Üretim, Kalite Kontrol ve seçilen diğer bölümler kendi bulgu ve kök neden katkılarını eş zamanlı tamamlar.",
-        role: "Bölüm araştırmacıları",
-        guard:
-          "Tüm bölüm araştırmaları tamamlanmadan etki değerlendirmesine geçilemez.",
-      },
-      {
-        title: "Etki ve kök neden",
-        text: "Ürün, batch, pazar ve tekrar etkisi birleştirilir; doğrulanmış ortak kök neden kaydedilir.",
-        role: "Kalite Güvence",
-        guard: "Bölüm bulguları korunur ve nihai karardan ayrı izlenir.",
-      },
-      {
-        title: "Farmakovijilans",
-        text: "Advers olay şüphesinde M.15 yönlendirmesi açılır; ürün ve batch dışında müşteri/sağlık anlatısı aktarılmaz.",
-        role: "Farmakovijilans değerlendiricisi",
-        guard: "Gizlilik sınırı aktarım verisini teknik olarak sınırlar.",
-      },
-      {
-        title: "DÖF kararı",
-        text: "Doğrulanmış kök neden veya trend sinyali için M.02 DÖF kaydı otomatik oluşturulur ve şikâyete bağlanır.",
-        role: "Kalite Güvence",
-        guard: "DÖF gerekli kararında ilişkili kayıt olmadan ilerlenemez.",
-      },
-      {
-        title: "Nihai yanıt",
-        text: "Araştırma sonucu, alınan aksiyon ve müşteri mesajı yeni bir nihai yanıt sürümünde hazırlanıp onaylanır.",
-        role: "Koordinatör / Onaylayan",
-        guard: "Onaylı yanıt sürümleri değiştirilemez; düzeltme yeni sürümdür.",
-      },
-      {
-        title: "Kapanış",
-        text: "Nihai yanıt iletimi, farmakovijilans aktarımı ve kayıt bağlantıları kontrol edilerek şikâyet kapatılır.",
-        role: "Onaylayan",
-        guard:
-          "Onaylı nihai yanıt veya gerekli FV aktarımı eksikse kapanış engellenir.",
-      },
+    name: "Müşteri Şikâyetleri",
+    purpose: "Müşteri bildirimini triyaj, ön yanıt, paralel araştırma, etki/kök neden, DÖF/FV bağlantıları ve nihai yanıtla yönetir.",
+    entry: "complaint.create izni olan kullanıcı müşteri, ürün, batch, olay ve SLA bilgileriyle kaydı açar; bir ComplaintCoordinator atanır.",
+    steps: [
+      step("Kaydı al ve triyaj yap", "Şikâyet Koordinatörü", "complaint.create / complaint.manage", "Bildirimi kaydeder; önem, sağlık etkisi, kalite ve tekrar sinyalini değerlendirir.", "Gerekirse M.01/FV bağlantıları açılır ve PreliminaryResponse başlar.", "Majör/kritik kalite şikâyeti M.01'i zorunlu tetikler."),
+      step("Ön yanıtı hazırla ve onaylat", "Coordinator → ResponseApprover", "complaint.manage / complaint.approve", "Ön yanıt sürümünü hazırlar; farklı onaylayan elektronik imza verir.", "Paralel araştırmalar başlatılabilir.", "Yanıtı hazırlayan kendi sürümünü onaylayamaz."),
+      step("Paralel araştırmaları tamamla", "ComplaintInvestigator", "complaint.investigate + bölüm görevi", "Her bölüm bulgu ve kök neden katkısını kaydeder.", "Tüm görevler tamamlanınca etki değerlendirmesi açılır.", "Atanmamış kullanıcı başka bölümün araştırmasını tamamlayamaz."),
+      step("Etki, DÖF ve FV kararını ver", "ComplaintCoordinator / KG", "complaint.manage", "Ortak kök nedeni ve etkiyi doğrular; M.02 ve gerekiyorsa farmakovijilans bağlantısını oluşturur.", "Nihai yanıt hazırlığına geçilir.", "DÖF gerekli kararda M.02 bağlantısı olmadan ilerlenemez."),
+      step("Nihai yanıtı onayla ve kapat", "Coordinator → ResponseApprover", "complaint.manage / complaint.approve", "Nihai yanıt sürümünü hazırlar, iletim ve bağlantıları kontrol ederek ayrı kullanıcıyla kapatır.", "Kayıt Closed olur; tüm sürümler korunur.", "Onaylı nihai yanıt ve gerekli FV aktarımı olmadan kapanmaz."),
     ],
-    rules: [
-      "Ön ve nihai müşteri yanıtları ayrı, sürümlü ve onaylı kayıtlardır.",
-      "Tüm paralel araştırmalar bitmeden ortak etki/kök neden kararı verilemez.",
-      "Farmakovijilans aktarımı müşteri ve sağlık anlatısını şikâyet modülünden dışarı kopyalamaz.",
+    roles: [
+      { role: "QualityAssurance / DepartmentManager", taskRole: "ComplaintCoordinator", permission: "complaint.manage", responsibility: "Triyaj, bağlantılar, ortak karar ve yanıt hazırlığını yönetir." },
+      { role: "Investigator / DepartmentManager", taskRole: "ComplaintInvestigator", permission: "complaint.investigate", responsibility: "Atandığı bölüm araştırmasını tamamlar." },
+      { role: "Approver / QualifiedPerson", taskRole: "ResponseApprover", permission: "complaint.approve", responsibility: "Müşteri yanıtlarını ve kapanışı bağımsız onaylar." },
+      { role: "PharmacovigilanceReviewer", taskRole: "PharmacovigilanceReviewer", permission: "specialized.manage", responsibility: "Advers olay şüphesini gizlilik sınırları içinde değerlendirir." },
     ],
+    rules: ["Ön ve nihai yanıtlar ayrı, sürümlü ve onaylı kayıtlardır.", "Tüm bölüm araştırmaları bitmeden ortak kök neden kararı verilemez.", "Oluşturan kullanıcı nihai kapanışı onaylayamaz."],
     connections: [
-      "M.01 Sapma Yönetimi",
-      "M.02 DÖF Yönetimi",
-      "M.15 Farmakovijilans",
-      "M.11 Risk",
-      "Ürün / Batch",
-      "Müşteri yanıt arşivi",
+      {
+        process: "M.01 · Sapma Yönetimi",
+        direction: "M.06 → M.01",
+        trigger: "complete-triage sırasında ComplaintType=ProductQuality ve Severity Minor dışında olduğunda M.01 otomatik oluşturulur.",
+        communication: "Complaint.LinkedDeviationId oluşan sapmayı tutar; M.01 audit event'i complaintId, product ve batchNumber içerir.",
+        data: "Ürün, batch, açıklama, olay/alınma zamanı; severity şiddete, trend sinyali olasılığa çevrilir. Müşteri adı M.01'e aktarılmaz.",
+        dependency: "İki kayıt aynı transaction'da oluşur. M.06 kapanış metodu M.01 durumunu sorgulamaz.",
+      },
+      {
+        process: "M.15 · Farmakovijilans",
+        direction: "M.06 → M.15",
+        trigger: "complete-triage sırasında SuspectedAdverseEvent=true ise FV kalite kaydı otomatik oluşturulur.",
+        communication: "Complaint.PharmacovigilanceRecordId ve PharmacovigilanceStatus=Transferred saklanır. FV kayıt metadata'sında sourceComplaintId ve privacyBoundary bulunur.",
+        data: "Şikâyet kimliği, ürün, batch ve severity aktarılır. privacyBoundary=NoCustomerOrHealthNarrativeTransferred nedeniyle müşteri veya sağlık anlatısı aktarılmaz.",
+        dependency: "Advers olay şüphesi varsa PharmacovigilanceStatus Transferred olmadan M.06 kapatılamaz.",
+      },
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.06 → M.02",
+        trigger: "CapaDecision aşamasında CapaRequired=true seçildiğinde M.02 otomatik oluşturulur.",
+        communication: "Complaint.LinkedCapaId M.02 kimliğini saklar; M.02 audit event'i complaintId ve complaintNumber içerir.",
+        data: "Ürün tabanlı başlık, şikâyet açıklaması, doğrulanmış kök neden, müşteri etkisi acil aksiyonu, sahip, hedef ve isteğe bağlı trend etkinlik planı.",
+        dependency: "CapaRequired=true iken M.02 oluşturulmadan FinalResponseApproval'a geçilemez. Mevcut Close kodu M.02 Status değerini kontrol etmez.",
+      },
     ],
   },
   "M.07": {
-    title: "İç Denetimler ekran simülasyonu",
-    summary:
-      "Yıllık veya gerekçeli plansız denetimin bağımsızlık kontrolünden kilitli soru listesine, risk sınıflı bulguya ve M.02 DÖF bağımlı kapanışa kadar ilerleyişini izleyin.",
-    recordNumber: "İD-2026-000014",
-    recordTitle: "Üretim kayıtları ve veri bütünlüğü denetimi",
-    stages: [
-      {
-        title: "Yıllık plan",
-        text: "Denetim türü, kapsam, amaç, kriter, denetlenen bölüm, baş denetçi ve takvim kontrollü plana alınır.",
-        role: "Denetim planlayıcısı",
-        guard: "Plansız denetimde gerekçe zorunludur.",
-      },
-      {
-        title: "Hazırlık",
-        text: "Denetçi bölüm bağımsızlığı, soru listesi sürümü ve denetim referansları hazırlanır.",
-        role: "Baş denetçi",
-        guard: "Denetçi kendi bölümünü denetleyemez.",
-      },
-      {
-        title: "Plan onayı",
-        text: "Yetkili onayıyla denetim planı ve soru listesi sürümü zaman damgasıyla kilitlenir.",
-        role: "Kalite Güvence / Onaylayan",
-        guard: "Kilit sonrası soru metni değiştirilemez.",
-      },
-      {
-        title: "Uygulama",
-        text: "Her soruya uygunluk sonucu, objektif kanıt ve denetçi notu kaydedilir.",
-        role: "Baş denetçi",
-        guard: "Tüm sorular yanıtlanmadan uygulama tamamlanamaz.",
-      },
-      {
-        title: "Bulgular",
-        text: "Uygunsuzluklar etki × olasılık puanıyla Kritik, Majör, Minör veya Gözlem olarak sınıflanır.",
-        role: "Baş denetçi",
-        guard: "Majör ve kritik bulguda M.02 DÖF otomatik açılır.",
-      },
-      {
-        title: "Cevap / aksiyon",
-        text: "Denetlenen bölüm bulgu yanıtını, nedeni ve düzeltici aksiyonu hedef tarihiyle sunar.",
-        role: "Denetlenen bölüm yanıtlayanı",
-        guard: "Her açık bulguya yanıt verilmeden doğrulamaya geçilemez.",
-      },
-      {
-        title: "DÖF / doğrulama",
-        text: "Denetçi kanıtı ve bağlı DÖF durumunu doğrular; uygun bulguyu kapatır.",
-        role: "Kalite Güvence / Onaylayan",
-        guard: "Bağlı DÖF kapanmadan bulgu kapatılamaz.",
-      },
-      {
-        title: "Bulgu kapanışı",
-        text: "Tüm bulguların doğrulama notu ve kapanış zamanı birlikte kontrol edilir.",
-        role: "Kalite Güvence",
-        guard: "Tek bir açık bulgu bile denetim kapanışını engeller.",
-      },
-      {
-        title: "Denetim kapanışı",
-        text: "Kapsam, kanıt, bulgu ve DÖF zinciri son kez gözden geçirilerek denetim kapatılır.",
-        role: "Onaylayan",
-        guard: "Kapanış gerekçesi ve değiştirilemez geçmiş zorunludur.",
-      },
+    name: "İç Denetimler",
+    purpose: "İç denetimi bağımsız plan, kilitli soru listesi, kanıt, risk sınıflı bulgu, bölüm yanıtı ve DÖF bağımlı kapanışla yürütür.",
+    entry: "QualityAssurance internal-audit.plan izniyle yıllık veya gerekçeli plansız denetim açar; baş denetçi ve bölüm yanıtlayanı atanır.",
+    steps: [
+      step("Planla ve hazırla", "AuditPlanner", "internal-audit.plan", "Kapsam, kriter, denetlenen bölüm, baş denetçi, takvim ve soru listesini tanımlar.", "Preparation ve ardından PlanApproval oluşur.", "Baş denetçi kendi bölümünü denetleyemez; plansız kayıtta gerekçe zorunludur."),
+      step("Planı ve soruları kilitle", "Approver", "internal-audit.approve + kayıt görevi", "Bağımsızlık ve kapsamı onaylar.", "Checklist sürümü kilitlenir ve Execution açılır.", "Planlayıcı ve baş denetçiden farklı onaylayan atanır."),
+      step("Denetimi uygula", "LeadAuditor", "internal-audit.execute + kayıt görevi", "Her soruya sonuç, objektif kanıt ve not girer; bulguları risk puanıyla oluşturur.", "Findings ve ResponseAction aşamaları açılır.", "Tüm sorular yanıtlanmadan uygulama tamamlanmaz; majör/kritik bulgu M.02 açar."),
+      step("Bölüm yanıtlarını tamamla", "AuditeeResponder", "internal-audit.respond + kayıt görevi", "Her bulguya neden, düzeltici aksiyon ve hedef tarih girer.", "CapaVerification başlar.", "Her açık bulgu yanıtlanmadan geçiş olmaz."),
+      step("Bulguları doğrula ve denetimi kapat", "Approver / KG", "internal-audit.approve + kayıt görevi", "Kanıtı ve bağlı DÖF durumunu doğrular; bulguları tek tek, sonra denetimi kapatır.", "Tüm bulgular kapalıysa audit Closed olur.", "Bağlı M.02 kapanmadan bulgu; tek açık bulgu varken denetim kapanmaz."),
     ],
-    rules: [
-      "Soru listesi denetim başladığında sürümüyle birlikte kilitlenir.",
-      "Baş denetçinin bölümü denetlenen bölümden farklı olmalıdır.",
-      "Majör ve kritik bulgu M.02 DÖF açar; DÖF kapanmadan bulgu, bulgular kapanmadan denetim kapanmaz.",
+    roles: [
+      { role: "QualityAssurance", taskRole: "AuditPlanner", permission: "internal-audit.plan", responsibility: "Denetim planını ve kapsamı oluşturur." },
+      { role: "Investigator", taskRole: "LeadAuditor", permission: "internal-audit.execute", responsibility: "Soru listesini, kanıtları ve bulguları yürütür." },
+      { role: "DepartmentManager / ActionOwner", taskRole: "AuditeeResponder", permission: "internal-audit.respond", responsibility: "Denetlenen bölümün bulgu yanıtlarını verir." },
+      { role: "Approver / QualityAssurance", taskRole: "Approver", permission: "internal-audit.approve", responsibility: "Plan, bulgu ve nihai kapanışı doğrular." },
     ],
+    rules: ["Baş denetçi denetlenen bölümden farklı olmalıdır.", "Soru listesi uygulama öncesi sürümüyle kilitlenir.", "Majör/kritik bulgu M.02 kapanmadan kapatılamaz."],
     connections: [
-      "M.02 DÖF Yönetimi",
-      "M.04 Doküman Yönetimi",
-      "M.05 Eğitim Yönetimi",
-      "M.11 Risk Yönetimi",
-      "Organizasyon ve roller",
-      "Değiştirilemez denetim geçmişi",
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.07 bulgusu → M.02 → M.07 bulgusu",
+        trigger: "Bulgu eklenirken impact × likelihood skoru 12 ve üzerindeyse veya CapaRequired=true gönderildiyse M.02 aynı transaction'da oluşturulur.",
+        communication: "AuditFinding.LinkedCapaId M.02 kimliğini tutar. M.02 SourceType=InternalAudit olur; M.02 audit event'i auditId, M.07 event'i capaId taşır.",
+        data: "Bulgu başlığı/açıklaması/referansı, bulgu sahibi, hedef tarih; kök neden metni “İç denetim bulgusu: {referans}”, etkinlik yöntemi iç denetim tekrar doğrulamasıdır.",
+        dependency: "M.07 bulgu kapanışında LinkedCapaId ile M.02 Status=Closed aranır. DÖF açıkken bulgu, açık bulgu varken denetim kapanamaz.",
+      },
     ],
   },
   "M.08": {
-    title: "Dış Denetimler ekran simülasyonu",
-    summary:
-      "Bir otorite veya müşteri denetiminin resmi bildirimden kontrollü doküman talep paketine, bulgu taahhütlerine, M.02 DÖF’e ve yetkili kapanışına kadar nasıl ilerlediğini izleyin.",
-    recordNumber: "DD-2026-000009",
-    recordTitle: "TİTCK GMP ve veri bütünlüğü denetimi",
-    stages: [
-      {
-        title: "Bildirildi",
-        text: "Denetleyen kurum, resmi referans, ülke, kapsam, saha, takvim ve cevap hedefi tek kayda alınır.",
-        role: "Dış denetim koordinatörü",
-        guard:
-          "Devlet kurumunda Mesul Müdür/atanmış kapanış yetkilisi zorunludur.",
-      },
-      {
-        title: "Hazırlık",
-        text: "Otoritenin istediği M.04 dokümanları gizlilik sınıfı ve güncel sürümüyle talep paketine alınır.",
-        role: "Talep paketi kontrolörü",
-        guard: "Doküman doğrudan paylaşılmaz; kontrollü dışa aktarım gerekir.",
-      },
-      {
-        title: "Denetim",
-        text: "Talep paketi alıcı, amaç, manifest ve erişim kanıtıyla aktarıldıktan sonra saha denetimi başlatılır.",
-        role: "Dış denetim koordinatörü",
-        guard: "Tek bir bekleyen doküman bile denetim başlangıcını engeller.",
-      },
-      {
-        title: "Bulgular",
-        text: "Otorite/müşteri referansı taşıyan bulgular Kritik, Majör, Minör veya Gözlem olarak kaydedilir.",
-        role: "Denetim koordinatörü",
-        guard: "Majör ve kritik bulguda M.02 DÖF otomatik açılır.",
-      },
-      {
-        title: "Cevap planı",
-        text: "Her bulgu için resmi cevap, kurumsal taahhüt, sorumlu ve hedef tarih sürümlü kayda bağlanır.",
-        role: "Resmi bulgu yanıtlayanı",
-        guard: "Tüm bulgular cevaplanmadan DÖF/aksiyon aşaması açılmaz.",
-      },
-      {
-        title: "DÖF / aksiyon",
-        text: "Taahhüt kanıtları ve bağlı M.02 DÖF kapanışı yetkili kullanıcı tarafından doğrulanır.",
-        role: "Kalite Güvence / Onaylayan",
-        guard: "Açık DÖF varken resmi bulgu kapatılamaz.",
-      },
-      {
-        title: "Kapanış mektubu",
-        text: "Otorite veya müşteri kapanış mektubu, dosya kanıtı ve kabul kararıyla kaydedilir.",
-        role: "Dış denetim koordinatörü",
-        guard: "Tüm bulgular kapanmadan bu aşamaya geçilemez.",
-      },
-      {
-        title: "Yetkili kapanışı",
-        text: "Kapanış mektubu ve kabul kanıtı nihai görev ayrılığı kontrolüne sunulur.",
-        role: "Mesul Müdür / Atanmış yetkili",
-        guard:
-          "Devlet kurumu denetimini yalnız Mesul Müdür veya atanmış yetkili kapatabilir.",
-      },
-      {
-        title: "Kapalı",
-        text: "Resmi bildirim, paylaşımlar, bulgular, taahhütler, DÖF ve kapanış kanıtı tek denetim paketinde korunur.",
-        role: "Kalite Güvence",
-        guard: "Değiştirilemez audit trail ve erişim günlüğü korunur.",
-      },
+    name: "Dış Denetimler",
+    purpose: "Otorite veya müşteri denetimini kontrollü doküman paketi, resmi bulgular, taahhütler, DÖF ve yetkili kapanışıyla yönetir.",
+    entry: "QualityAssurance veya DepartmentManager external-audit.create izniyle resmi referans, kurum, kapsam ve takvim bilgilerini kaydeder.",
+    steps: [
+      step("Bildirimi kaydet ve hazırlığı başlat", "ExternalAuditCoordinator", "external-audit.create", "Kurum, resmi referans, ülke, kapsam, saha ve SLA bilgilerini girer.", "Preparation açılır.", "Devlet kurumu denetiminde yetkili kapanış kullanıcısı zorunludur."),
+      step("Kontrollü talep paketi hazırla", "DocumentPackageController", "external-audit.prepare", "Güncel M.04 sürümlerini manifest, amaç, alıcı ve erişim kanıtıyla pakete alır.", "Eksiksiz paketle AuditInProgress başlar.", "Bekleyen doküman varken denetim başlatılamaz; doğrudan kontrolsüz paylaşım yapılamaz."),
+      step("Bulguları ve cevap planını kaydet", "ExternalAuditCoordinator / Responder", "external-audit.prepare / respond", "Resmi bulguları sınıflar; cevap, taahhüt, sorumlu ve hedef tarihi kaydeder.", "CapaAction aşaması açılır.", "Majör/kritik bulgu M.02 oluşturur; tüm bulgular cevaplanmalıdır."),
+      step("DÖF ve kanıtları doğrula", "Approver / KG", "external-audit.approve", "Taahhüt kanıtlarını ve bağlı M.02 durumunu doğrular.", "Tüm bulgular kapanınca ClosureLetter açılır.", "Açık DÖF varken resmi bulgu kapatılamaz."),
+      step("Yetkili kapanışı ver", "QualifiedPerson / AuthorizedCloser", "external-audit.approve + kayıt görevi", "Kapanış mektubu ve kabul kanıtını imzalar.", "Kayıt Closed olur.", "Devlet kurumu denetimini yalnız Mesul Müdür/atanmış yetkili kapatır; oluşturan kapatamaz."),
     ],
-    rules: [
-      "Talep paketi kontrollü dışa aktarım ve erişim kaydı olmadan paylaşılamaz.",
-      "Majör-kritik bulgu otomatik M.02 DÖF açar; DÖF kapanmadan bulgu kapatılamaz.",
-      "Devlet kurumu denetiminde nihai kapanış Mesul Müdür/atanmış yetkiliye aittir.",
+    roles: [
+      { role: "QualityAssurance / DepartmentManager", taskRole: "ExternalAuditCoordinator", permission: "external-audit.create", responsibility: "Denetim kaydını ve resmi akışı koordine eder." },
+      { role: "DocumentController", taskRole: "DocumentPackageController", permission: "external-audit.prepare", responsibility: "Kontrollü talep paketini oluşturur ve aktarır." },
+      { role: "DepartmentManager / ActionOwner", taskRole: "ExternalAuditeeResponder", permission: "external-audit.respond", responsibility: "Resmi bulgu cevap ve taahhütlerini hazırlar." },
+      { role: "Approver / QualifiedPerson", taskRole: "ExternalAuditAuthorizedCloser", permission: "external-audit.approve", responsibility: "Kanıtları ve yetkili kapanışı doğrular." },
     ],
+    rules: ["Dokümanlar kontrollü dışa aktarım olmadan paylaşılmaz.", "Majör/kritik bulgu bağlı M.02 kapanmadan kapanmaz.", "Devlet kurumu kapanışı özel yetki ve elektronik imza gerektirir."],
     connections: [
-      "M.02 DÖF Yönetimi",
-      "M.04 Doküman Yönetimi",
-      "M.05 Eğitim Yönetimi",
-      "M.07 İç Denetimler",
-      "Mesul Müdür / Organizasyon",
-      "Kontrollü dışa aktarım günlüğü",
+      {
+        process: "M.04 · Doküman Yönetimi",
+        direction: "M.04 → M.08 talep paketi",
+        trigger: "M.08 oluşturulurken DocumentRequest girdilerindeki ControlledDocumentId değerleriyle güncel kontrollü dokümanlar seçilir.",
+        communication: "Talep satırı M.04 kimliğini, doküman kodunu, başlığı ve gizlilik sınıfını saklar. ExportDocument işlemi alıcı, amaç, kanıt, export sürümü ve erişim zamanını ayrı access kaydına yazar.",
+        data: "ControlledDocumentId, kod, başlık, gizlilik, exportVersion, recipient, purpose, evidence ve accessedAtUtc.",
+        dependency: "Tüm doküman talepleri Exported olmadan M.08 start-audit geçişi reddedilir.",
+      },
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.08 bulgusu → M.02 → M.08 bulgusu",
+        trigger: "Bulgu Major/Critical ise veya CapaRequired=true seçilirse M.02 aynı transaction'da otomatik oluşturulur.",
+        communication: "ExternalAuditFinding.LinkedCapaId tutulur. M.02 SourceType=ExternalAudit ve audit event payload'ında externalAuditId bulunur.",
+        data: "Bulgu başlığı/açıklaması/resmi referansı, sorumlu, cevap hedefi; etkinlik yöntemi taahhüt ve otorite kabul kanıtıdır.",
+        dependency: "M.08 bulgu kapanırken M.02 Status=Closed kontrol edilir. Açık DÖF'lü bulgu kapanamaz; tüm bulgular kapanmadan kapanış mektubu aşaması açılamaz.",
+      },
     ],
   },
   "M.09": {
-    title: "Tedarikçi Denetimi ekran simülasyonu",
-    summary:
-      "Risk bazlı tedarikçi planının soru listesi, saha kanıtı, güvenli tedarikçi cevabı, M.02 DÖF ve kapsam bazlı nitelendirme kararına nasıl dönüştüğünü izleyin.",
-    recordNumber: "TD-2026-000014",
-    recordTitle: "Primer ambalaj tedarikçisi GMP denetimi",
-    stages: [
-      {
-        title: "Risk planı",
-        text: "Kritiklik, geçmiş performans ve açık bulgu sayısından risk skoru ile denetim frekansı hesaplanır.",
-        role: "Tedarikçi denetimi planlayıcısı",
-        guard:
-          "Kritiklik ve geçmiş performans verisi olmadan plan oluşturulamaz.",
-      },
-      {
-        title: "Kapsam",
-        text: "Malzeme/hizmet kapsamı, saha, kriterler ve sürümlü soru listesi sabitlenir.",
-        role: "Tedarikçi Kalite",
-        guard: "En az bir soru listesi maddesi zorunludur.",
-      },
-      {
-        title: "Denetçi",
-        text: "Baş denetçi ve satınalma sorumlusu kayıt bazlı görevlerle atanır.",
-        role: "Denetim planlayıcısı",
-        guard: "Yetkili baş denetçi atanmadan uygulama başlayamaz.",
-      },
-      {
-        title: "Uygulama",
-        text: "Her soru uygunluk sonucu, objektif kanıt ve denetçi notuyla yanıtlanır.",
-        role: "Tedarikçi baş denetçisi",
-        guard: "Soru listesi denetim başlangıcında sürümüyle kilitlenir.",
-      },
-      {
-        title: "Bulgular",
-        text: "Bulgular Kritik, Majör, Minör veya Gözlem olarak sınıflanır.",
-        role: "Baş denetçi",
-        guard:
-          "Kritik bulgu kapsamı askıya alır; majör/kritik bulgu M.02 DÖF açar.",
-      },
-      {
-        title: "Tedarikçi cevabı",
-        text: "Cevap ve taahhüt iç kullanıcı veya süreli tek kullanımlık güvenli davet üzerinden alınır.",
-        role: "Tedarikçi yanıt sorumlusu",
-        guard: "Davet tokenı yalnız bir kez gösterilir ve özeti saklanır.",
-      },
-      {
-        title: "Kanıt",
-        text: "Tedarikçi kanıt paketi ve taahhüt hedefi doğrulama için sabitlenir.",
-        role: "Tedarikçi kanıt doğrulayıcısı",
-        guard: "Kanıtı olmayan bulgu DÖF/CAPA aşamasına geçemez.",
-      },
-      {
-        title: "DÖF / CAPA",
-        text: "Bağlı M.02 kayıtları ve tedarikçi kanıtları yetkili kullanıcı tarafından doğrulanır.",
-        role: "Kalite Güvence / Onaylayan",
-        guard: "Açık DÖF varken bulgu kapatılamaz.",
-      },
-      {
-        title: "Sonuç",
-        text: "Onaylı, koşullu, askıda, reddedildi veya yeniden nitelendirme kararı gerekçeyle kaydedilir.",
-        role: "Tedarikçi kalite onaylayanı",
-        guard: "Kritik bulgulu tedarikçi doğrudan onaylanamaz.",
-      },
-      {
-        title: "Kapalı",
-        text: "Risk hesabı, soru listesi, kanıtlar, davetler, DÖF ve karar tek denetim paketinde korunur.",
-        role: "Kalite Güvence",
-        guard: "Tüm bulgular ve nitelendirme kararı tamamlanmalıdır.",
-      },
+    name: "Tedarikçi Denetimi",
+    purpose: "Tedarikçiyi risk planından soru listesi, saha kanıtı, güvenli cevap, DÖF ve kapsam bazlı nitelendirme kararına taşır.",
+    entry: "QualityAssurance veya DepartmentManager supplier-audit.plan izniyle tedarikçi, kapsam, kritiklik ve geçmiş performans verileriyle risk planı oluşturur.",
+    steps: [
+      step("Risk planını ve kapsamı oluştur", "SupplierAuditPlanner", "supplier-audit.plan", "Kritiklik, geçmiş performans ve açık bulgulardan risk/frekans hesaplar; kapsam ve soru listesini sabitler.", "AuditorAssignment açılır.", "Kritiklik, performans ve en az bir soru listesi maddesi zorunludur."),
+      step("Denetçiyi ata ve uygula", "SupplierAuditLeadAuditor", "supplier-audit.execute", "Baş denetçi atanır; her soruya sonuç, kanıt ve not girer.", "Findings aşaması açılır.", "Soru listesi başlangıçta sürümüyle kilitlenir."),
+      step("Bulguları sınıflandır", "SupplierAuditLeadAuditor", "supplier-audit.execute", "Bulguları kritik, majör, minör veya gözlem olarak kaydeder.", "SupplierResponse açılır; gerekli M.02 bağlantıları kurulur.", "Kritik bulgu kapsamı askıya alır; majör/kritik bulgu M.02 açar."),
+      step("Tedarikçi cevabı ve kanıtı al", "SupplierResponder", "supplier-audit.respond + kayıt görevi", "İç kullanıcı veya süreli tek kullanımlık güvenli davetle cevap, taahhüt ve kanıt toplar.", "EvidenceVerification açılır.", "Token yalnız bir kez gösterilir; yalnız özeti saklanır."),
+      step("Kanıt ve DÖF'ü doğrula", "SupplierAuditVerifier", "supplier-audit.approve", "Kanıt paketini ve bağlı M.02 kapanışlarını doğrular.", "AuditResult aşaması açılır.", "Açık DÖF veya kanıtsız bulgu ilerlemeyi engeller."),
+      step("Nitelendirme kararı ver ve kapat", "SupplierQualityApprover", "supplier-audit.approve + kayıt görevi", "Onaylı, koşullu, askıda, reddedildi veya yeniden nitelendirme kararını gerekçeyle verir.", "Kayıt Closed olur ve karar M.16'ya girdi sağlar.", "Kritik bulgulu tedarikçi doğrudan onaylanamaz; tüm bulgular kapanmış olmalıdır."),
     ],
-    rules: [
-      "Kritik bulgu tedarikçi kapsamını otomatik askıya alır ve yeniden nitelendirme gerektirir.",
-      "Majör/kritik bulgu M.02 DÖF açar; DÖF kapanmadan bulgu ve denetim kapanmaz.",
-      "Tedarikçi cevabı ikinci tenant açmadan, süreli ve tek kullanımlık güvenli davetle alınabilir.",
+    roles: [
+      { role: "QualityAssurance / DepartmentManager", taskRole: "SupplierAuditPlanner", permission: "supplier-audit.plan", responsibility: "Risk planı, kapsam ve denetçi atamasını yönetir." },
+      { role: "Investigator / Approver", taskRole: "SupplierAuditLeadAuditor", permission: "supplier-audit.execute", responsibility: "Saha uygulamasını ve bulguları yürütür." },
+      { role: "DepartmentManager / ActionOwner", taskRole: "SupplierResponder", permission: "supplier-audit.respond", responsibility: "Tedarikçi cevap ve kanıtlarını toplar." },
+      { role: "QualityAssurance / Approver", taskRole: "SupplierAuditVerifier / SupplierQualityApprover", permission: "supplier-audit.approve", responsibility: "Kanıt, DÖF ve nitelendirme sonucunu doğrular." },
     ],
+    rules: ["Kritik bulgu kapsamı askıya alır ve yeniden nitelendirme gerektirir.", "Majör/kritik bulgu M.02 kapanmadan denetim kapanmaz.", "Tedarikçi erişimi ikinci tenant yerine süreli tek kullanımlık davetle verilir."],
     connections: [
-      "M.02 DÖF Yönetimi",
-      "M.11 Risk Yönetimi",
-      "M.16 Tedarikçi Değerlendirme",
-      "Satınalma",
-      "Güvenli tedarikçi cevap portalı",
-      "Değiştirilemez denetim geçmişi",
+      {
+        process: "M.16 · Tedarikçi Değerlendirme",
+        direction: "M.16 → M.09",
+        trigger: "M.09 oluşturma isteğinde isteğe bağlı SupplierEvaluationId alınır.",
+        communication: "SupplierAudit.SupplierEvaluationId alanı değeri saklar ve detay cevabında döndürür.",
+        data: "Yalnız M.16 kayıt kimliği doğrudan taşınır; tedarikçi kodu/adı, performans ve açık bulgu sayısı M.09 isteğinde ayrıca gönderilir.",
+        dependency: "CreateAsync mevcut kodunda SupplierEvaluationId için varlık veya durum doğrulaması yapmaz; bağlantı teknik olarak izlenebilirlik alanıdır.",
+      },
+      {
+        process: "M.02 · DÖF Yönetimi",
+        direction: "M.09 bulgusu → M.02 → M.09 bulgusu",
+        trigger: "Bulgu Major/Critical ise veya CapaRequired=true seçilirse M.02 aynı transaction'da otomatik oluşturulur.",
+        communication: "SupplierAuditFinding.LinkedCapaId tutulur. M.02 SourceType=SupplierAudit ve audit event payload'ında supplierAuditId bulunur.",
+        data: "Bulgu başlığı/açıklaması/referansı, sahip ve cevap hedefi; etkinlik yöntemi tedarikçi kanıtı ve kalite doğrulamasıdır.",
+        dependency: "M.09 bulgusu M.02 Closed olmadan kapatılamaz. Tüm bulgular ve bağlı DÖF'ler kapanmadan denetim sonucu oluşturulamaz.",
+      },
+      {
+        process: "Güvenli Tedarikçi Cevap Ekranı",
+        direction: "M.09 → tek kullanımlık bağlantı → M.09",
+        trigger: "SupplierResponder, SupplierResponse aşamasında alıcı e-posta ve son kullanma tarihiyle davet oluşturur.",
+        communication: "Sistem rastgele token üretir, yalnız SHA-256 özetini saklar ve /supplier-response?token=... yolunu bir kez döndürür. Gönderim tokenı kullanılmış işaretler ve cevap, taahhüt, hedef tarih ile kanıtı bulguya yazar.",
+        data: "FindingId, supplierResponse, commitment, commitmentDueAtUtc ve evidence. Audit aktörü “Tedarikçi güvenli yanıt ekranı” olarak kaydedilir.",
+        dependency: "Token süresi dolmuş veya kullanılmışsa tekrar kullanılamaz. Cevap ve kanıt olmadan M.09 doğrulama/CAPA aşamalarına geçemez.",
+      },
     ],
   },
 };
@@ -786,10 +567,10 @@ export function ModuleInfoButton({
       className="module-info-button"
       variant="outlined"
       size="large"
-      startIcon={<InfoOutlined />}
+      startIcon={<MenuBookRounded />}
       onClick={onClick}
     >
-      {module} hakkında
+      {module} kullanım kılavuzu
     </Button>
   );
 }
@@ -804,36 +585,6 @@ export function ModuleGuideDialog({
   onClose: () => void;
 }) {
   const guide = guides[module];
-  const [activeStep, setActiveStep] = useState(0);
-  const [playing, setPlaying] = useState(true);
-
-  useEffect(() => {
-    if (open) {
-      setActiveStep(0);
-      setPlaying(true);
-    }
-  }, [open, module]);
-  useEffect(() => {
-    if (!open || !playing) return;
-    const timer = window.setInterval(
-      () => setActiveStep((current) => (current + 1) % guide.stages.length),
-      3600,
-    );
-    return () => window.clearInterval(timer);
-  }, [open, playing, guide.stages.length]);
-
-  const stage = guide.stages[activeStep];
-  const selectStep = (index: number) => {
-    setActiveStep(index);
-    setPlaying(false);
-  };
-  const move = (direction: number) => {
-    setActiveStep(
-      (current) =>
-        (current + direction + guide.stages.length) % guide.stages.length,
-    );
-    setPlaying(false);
-  };
 
   return (
     <Dialog
@@ -842,2001 +593,205 @@ export function ModuleGuideDialog({
       maxWidth="xl"
       fullWidth
       className="module-guide-dialog"
-      slotProps={{ paper: { className: "module-simulator-paper" } }}
+      slotProps={{ paper: { className: "module-guide-manual-paper" } }}
     >
       <ModalHeader onClose={onClose}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          className="module-guide-header"
-        >
+        <Stack direction="row" className="module-guide-header">
           <Stack direction="row" spacing={1.4} sx={{ alignItems: "center" }}>
             <Box className="module-guide-header-icon">
-              <InfoOutlined />
+              <MenuBookRounded />
             </Box>
             <Box>
-              <Typography variant="overline">
-                {module} · İnteraktif modül simülasyonu
-              </Typography>
-              <Typography variant="h5">{guide.title}</Typography>
+              <Typography variant="overline">{module} · KULLANIM KILAVUZU</Typography>
+              <Typography variant="h5">{guide.name}</Typography>
             </Box>
           </Stack>
-          <Chip
-            className="simulation-live-chip"
-            icon={playing ? <PlayArrowRounded /> : <PauseRounded />}
-            label={playing ? "Otomatik anlatım" : "Manuel inceleme"}
-          />
+          <Chip icon={<VerifiedRounded />} label="Kod tabanlı iş akışı" />
         </Stack>
       </ModalHeader>
-      <DialogContent className="module-guide-content">
-        <Paper variant="outlined" className="module-guide-summary">
-          <AccountTreeRounded />
+
+      <DialogContent className="module-guide-content module-guide-manual-content">
+        <Paper variant="outlined" className="module-guide-summary module-guide-manual-summary">
+          <InfoOutlined />
           <Box>
-            <Typography sx={{ fontWeight: 800 }}>
-              Bu simülasyonda ne göreceksiniz?
-            </Typography>
-            <Typography color="text.secondary">{guide.summary}</Typography>
+            <Typography variant="overline">MODÜLÜN AMACI</Typography>
+            <Typography className="module-guide-purpose">{guide.purpose}</Typography>
+            <Typography color="text.secondary">{guide.entry}</Typography>
           </Box>
+          <Stack direction="row" spacing={1} className="module-guide-summary-stats">
+            <Chip label={`${guide.steps.length} aşama`} />
+            <Chip label={`${guide.roles.length} görev grubu`} />
+          </Stack>
         </Paper>
-        <Box className="module-simulator-shell">
-          <Box
-            className="module-simulator-rail"
-            aria-label={`${module} simülasyon adımları`}
-          >
-            <Stack direction="row" className="simulator-rail-heading">
-              <Box>
-                <Typography variant="overline">SÜREÇ HARİTASI</Typography>
-                <Typography sx={{ fontWeight: 800 }}>
-                  {activeStep + 1} / {guide.stages.length}. adım
-                </Typography>
-              </Box>
-              <Tooltip
-                title={playing ? "Otomatik oynatmayı durdur" : "Otomatik oynat"}
-              >
-                <IconButton onClick={() => setPlaying((value) => !value)}>
-                  {playing ? <PauseRounded /> : <PlayArrowRounded />}
-                </IconButton>
-              </Tooltip>
-            </Stack>
-            <LinearProgress
-              variant="determinate"
-              value={((activeStep + 1) / guide.stages.length) * 100}
-              className="simulation-progress"
+
+        <Box className="module-guide-manual-layout">
+          <Paper component="nav" variant="outlined" className="module-guide-manual-nav" aria-label={`${module} kılavuz içeriği`}>
+            <Typography variant="overline">KILAVUZ İÇERİĞİ</Typography>
+            <GuideNavItem icon={<AccountTreeRounded />} label="İşlem sırası" count={guide.steps.length} href={`#${module}-flow`} />
+            <GuideNavItem icon={<GroupsRounded />} label="Rol ve görevler" count={guide.roles.length} href={`#${module}-roles`} />
+            <GuideNavItem icon={<LinkRounded />} label="Süreç bağlantıları" count={guide.connections.length} href={`#${module}-connections`} />
+            <GuideNavItem icon={<RuleRounded />} label="Kontrol kuralları" count={guide.rules.length} href={`#${module}-rules`} />
+            <Box className="module-guide-access-note">
+              <SecurityRounded />
+              <Typography variant="body2">
+                Bir işlemin görünmesi için sistem izni ve aktif kayıt görevi birlikte gerekir.
+              </Typography>
+            </Box>
+          </Paper>
+
+          <Box className="module-guide-manual-main">
+            <GuideSectionHeader
+              id={`${module}-flow`}
+              eyebrow="İŞLEM SIRASI"
+              title="Modül aşama aşama nasıl kullanılır?"
+              description="Adımlar gerçek backend durum geçişleri ve kayıt bazlı görev kontrolleri sırasındadır."
+              icon={<AccountTreeRounded />}
             />
-            <Box className="simulation-step-list">
-              {guide.stages.map((item, index) => (
-                <button
-                  type="button"
-                  key={item.title}
-                  className={`simulation-step-button ${index === activeStep ? "is-active" : ""} ${index < activeStep ? "is-complete" : ""}`}
-                  onClick={() => selectStep(index)}
-                >
-                  <span className="simulation-step-index">
-                    {index < activeStep ? <CheckCircleRounded /> : index + 1}
-                  </span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.role}</small>
-                  </span>
-                </button>
+
+            <Box className="module-guide-step-list">
+              {guide.steps.map((item, index) => (
+                <Paper key={item.title} variant="outlined" className="module-guide-step-card">
+                  <Box className="module-guide-step-marker">
+                    <span>{index + 1}</span>
+                    {index < guide.steps.length - 1 && <i />}
+                  </Box>
+                  <Box className="module-guide-step-content">
+                    <Stack direction={{ xs: "column", sm: "row" }} className="module-guide-step-heading">
+                      <Box>
+                        <Typography variant="overline">{index + 1}. AŞAMA</Typography>
+                        <Typography variant="h6">{item.title}</Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+                        <Chip icon={<GroupsRounded />} label={item.actor} />
+                        <Chip variant="outlined" icon={<SecurityRounded />} label={item.permission} />
+                      </Stack>
+                    </Stack>
+                    <Box className="module-guide-step-details">
+                      <GuideDetail icon={<AssignmentTurnedInRounded />} label="Kullanıcının işlemi" text={item.action} />
+                      <GuideDetail icon={<ArrowForwardRounded />} label="İşlemden sonra" text={item.result} />
+                      <GuideDetail icon={<LockRounded />} label="Geçiş koşulu" text={item.control} tone="warning" />
+                    </Box>
+                  </Box>
+                </Paper>
               ))}
             </Box>
-          </Box>
-          <Box className="module-simulator-main">
-            <Box key={`${module}-${activeStep}`} className="simulation-scene">
-              <Paper variant="outlined" className="simulation-explanation">
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  sx={{ justifyContent: "space-between", gap: 2 }}
-                >
+
+            <GuideSectionHeader
+              id={`${module}-roles`}
+              eyebrow="YETKİ MODELİ"
+              title="Hangi rol hangi işlevi yapar?"
+              description="Sistem rolü genel izni, görev rolü ise belirli kayıt üzerindeki sorumluluğu ifade eder."
+              icon={<GroupsRounded />}
+            />
+            <Box className="module-guide-role-grid">
+              {guide.roles.map((item) => (
+                <Paper key={`${item.role}-${item.taskRole}`} variant="outlined" className="module-guide-role-card">
+                  <Box className="module-guide-role-icon"><GroupsRounded /></Box>
                   <Box>
-                    <Typography variant="overline">
-                      ŞU ANDA NE OLUYOR?
-                    </Typography>
-                    <Typography variant="h5">{stage.title}</Typography>
-                    <Typography color="text.secondary">{stage.text}</Typography>
+                    <Typography variant="overline">SİSTEM ROLÜ</Typography>
+                    <Typography variant="h6">{item.role}</Typography>
+                    <Typography color="text.secondary">{item.responsibility}</Typography>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ mt: 1.5, flexWrap: "wrap" }}>
+                      <Chip size="small" label={`Görev: ${item.taskRole}`} />
+                      <Chip size="small" variant="outlined" label={`İzin: ${item.permission}`} />
+                    </Stack>
                   </Box>
-                  <Chip icon={<GroupsRounded />} label={stage.role} />
-                </Stack>
-                <Stack direction="row" spacing={1} className="simulation-guard">
-                  <RuleRounded />
-                  <Box>
-                    <Typography variant="caption">KRİTİK KONTROL</Typography>
-                    <Typography variant="body2">{stage.guard}</Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-              <SimulationScreen
-                module={module}
-                step={activeStep}
-                guide={guide}
-              />
-            </Box>
-            <Stack direction="row" className="simulation-controls">
-              <Button startIcon={<ArrowBackRounded />} onClick={() => move(-1)}>
-                Önceki ekran
-              </Button>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  startIcon={playing ? <PauseRounded /> : <ReplayRounded />}
-                  onClick={() => setPlaying((value) => !value)}
-                >
-                  {playing ? "Durdur" : "Otomatik oynat"}
-                </Button>
-                <Button
-                  variant="contained"
-                  endIcon={<ArrowForwardRounded />}
-                  onClick={() => move(1)}
-                >
-                  Sonraki ekran
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
-        </Box>
-        <Box className="module-guide-bottom-grid">
-          <Paper variant="outlined" className="module-guide-rules">
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ alignItems: "center", mb: 1.5 }}
-            >
-              <RuleRounded color="primary" />
-              <Typography sx={{ fontWeight: 800 }}>
-                Modül genelindeki kritik kurallar
-              </Typography>
-            </Stack>
-            {guide.rules.map((rule, index) => (
-              <Stack direction="row" spacing={1.2} key={rule}>
-                <Box className="module-guide-rule-number">{index + 1}</Box>
-                <Typography variant="body2">{rule}</Typography>
-              </Stack>
-            ))}
-          </Paper>
-          <Paper variant="outlined" className="module-guide-connections">
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ alignItems: "center", mb: 1.5 }}
-            >
-              <LinkRounded color="primary" />
-              <Typography sx={{ fontWeight: 800 }}>
-                Bağlandığı süreçler
-              </Typography>
-            </Stack>
-            <Stack
-              direction="row"
-              spacing={1}
-              useFlexGap
-              sx={{ flexWrap: "wrap" }}
-            >
-              {guide.connections.map((item) => (
-                <Chip key={item} label={item} />
+                </Paper>
               ))}
-            </Stack>
-          </Paper>
+            </Box>
+
+            <GuideSectionHeader
+              id={`${module}-connections`}
+              eyebrow="SÜREÇ İLETİŞİMİ"
+              title="Bağlandığı süreçlerle veri ve durum iletişimi"
+              description="Yalnız kodda uygulanan kimlik bağı, otomatik kayıt üretimi ve durum bağımlılıkları gösterilir."
+              icon={<LinkRounded />}
+            />
+            <Box className="module-guide-connection-list">
+              {guide.connections.map((item, index) => (
+                <Paper key={`${item.process}-${item.direction}`} variant="outlined" className="module-guide-connection-card">
+                  <Stack direction={{ xs: "column", sm: "row" }} className="module-guide-connection-heading">
+                    <Stack direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
+                      <Box className="module-guide-connection-index">{index + 1}</Box>
+                      <Box>
+                        <Typography variant="overline">BAĞLI SÜREÇ</Typography>
+                        <Typography variant="h6">{item.process}</Typography>
+                      </Box>
+                    </Stack>
+                    <Chip icon={<AccountTreeRounded />} label={item.direction} />
+                  </Stack>
+                  <Box className="module-guide-connection-details">
+                    <ConnectionDetail label="Bağlantıyı ne tetikler?" text={item.trigger} />
+                    <ConnectionDetail label="Sistemler nasıl iletişim kurar?" text={item.communication} />
+                    <ConnectionDetail label="Hangi veri aktarılır?" text={item.data} />
+                    <ConnectionDetail label="Hangi işlem neyi bekler?" text={item.dependency} tone="dependency" />
+                  </Box>
+                </Paper>
+              ))}
+            </Box>
+
+            <GuideSectionHeader
+              id={`${module}-rules`}
+              eyebrow="API KONTROLLERİ"
+              title="Modül genelindeki zorunlu kurallar"
+              description="Bu kurallar kullanıcı arayüzünden bağımsız olarak backend tarafından uygulanır."
+              icon={<RuleRounded />}
+            />
+            <Paper variant="outlined" className="module-guide-rules module-guide-rule-panel">
+              {guide.rules.map((rule, index) => (
+                <Stack direction="row" spacing={1.2} key={rule}>
+                  <Box className="module-guide-rule-number">{index + 1}</Box>
+                  <Typography variant="body2">{rule}</Typography>
+                </Stack>
+              ))}
+            </Paper>
+          </Box>
         </Box>
       </DialogContent>
     </Dialog>
   );
 }
 
-function SimulationScreen({
-  module,
-  step,
-  guide,
-}: {
-  module: ModuleCode;
-  step: number;
-  guide: (typeof guides)[ModuleCode];
-}) {
+function GuideNavItem({ icon, label, count, href }: { icon: ReactNode; label: string; count: number; href: string }) {
   return (
-    <Paper variant="outlined" className="simulation-screen-frame">
-      <Box className="simulation-browser-bar">
-        <span />
-        <span />
-        <span />
-        <Typography>{module} kalite kaydı · ekran simülasyonu</Typography>
-        <Chip size="small" label="ÖRNEK EKRAN" />
-      </Box>
-      <Box className="simulation-record-header">
-        <Box>
-          <Typography variant="overline">{guide.recordNumber}</Typography>
-          <Typography variant="h6">{guide.recordTitle}</Typography>
-        </Box>
-        <Stack direction="row" spacing={1}>
-          <Chip
-            size="small"
-            color="success"
-            variant="outlined"
-            label={`${step + 1}. adım`}
-          />
-          <Chip size="small" label={guide.stages[step].title} />
-        </Stack>
-      </Box>
-      <Box className="simulation-screen-body">
-        {module === "M.01" ? (
-          <DeviationSimulation step={step} />
-        ) : module === "M.02" ? (
-          <CapaSimulation step={step} />
-        ) : module === "M.03" ? (
-          <ChangeSimulation step={step} />
-        ) : module === "M.04" ? (
-          <DocumentSimulation step={step} />
-        ) : module === "M.06" ? (
-          <ComplaintSimulation step={step} />
-        ) : module === "M.07" ? (
-          <InternalAuditSimulation step={step} />
-        ) : module === "M.08" ? (
-          <ExternalAuditSimulation step={step} />
-        ) : module === "M.09" ? (
-          <SupplierAuditSimulation step={step} />
-        ) : (
-          <TrainingSimulation step={step} />
-        )}
-      </Box>
-    </Paper>
-  );
-}
-
-function SupplierAuditSimulation({ step }: { step: number }) {
-  const rows = [
-    ["Kritiklik", "Yüksek", "40 puan"],
-    ["Geçmiş performans", "78 / 100", "8 puan"],
-    ["Açık bulgu", "2", "8 puan"],
-  ];
-  if (step === 0)
-    return (
-      <>
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Risk bazlı plan"
-          badge="56 · Yüksek"
-        >
-          <MockTable
-            headers={["Risk girdisi", "Değer", "Katkı"]}
-            rows={rows}
-            highlightRow={0}
-          />
-        </MockSection>
-        <MockAction text="Kapsamı sabitle" />
-      </>
-    );
-  if (step === 4)
-    return (
-      <MockSection
-        icon={<WarningAmberRounded />}
-        title="Kritik tedarikçi bulgusu"
-        badge="Kapsam askıda"
-      >
-        <MockField
-          label="Bulgu"
-          value="Sterilizasyon validasyonu güncel değil"
-          wide
-          active
-        />
-        <MockField
-          label="Otomatik bağ"
-          value="DÖF-2026-000041 · Yeniden nitelendirme"
-          wide
-        />
-      </MockSection>
-    );
-  if (step === 5)
-    return (
-      <MockSection
-        icon={<MarkEmailReadRounded />}
-        title="Tek kullanımlık güvenli davet"
-        badge="7 gün"
-      >
-        <MockField label="Alıcı" value="quality@supplier.example" wide />
-        <MockField
-          label="Güvenlik"
-          value="Token özeti saklanır · tek kullanım"
-          wide
-          active
-        />
-      </MockSection>
-    );
-  if (step === 8)
-    return (
-      <MockSection
-        icon={<VerifiedRounded />}
-        title="Kapsam bazlı nitelendirme"
-        badge="Koşullu"
-      >
-        <MockField
-          label="Karar"
-          value="Koşullu · yeniden nitelendirme gerekli"
-          wide
-          active
-        />
-        <MockField
-          label="M.16 tetikleyicisi"
-          value="Ara değerlendirme oluştur"
-          wide
-        />
-      </MockSection>
-    );
-  return (
-    <MockSection
-      icon={<FactCheckRounded />}
-      title={guides["M.09"].stages[step].title}
-      badge={`${step + 1}. adım`}
-    >
-      <MockField
-        label="Kontrol"
-        value={guides["M.09"].stages[step].guard}
-        wide
-        active
-      />
-      <MockField
-        label="Sorumlu"
-        value={guides["M.09"].stages[step].role}
-        wide
-      />
-    </MockSection>
-  );
-}
-
-function ExternalAuditSimulation({ step }: { step: number }) {
-  if (step === 0)
-    return (
-      <>
-        <MockSection
-          icon={<FactCheckRounded />}
-          title="Resmi dış denetim bildirimi"
-          badge="TİTCK · Otorite"
-        >
-          <Box className="mock-field-grid">
-            <MockField
-              label="Resmi referans"
-              value="TİTCK-GMP-2026-41"
-              active
-            />
-            <MockField
-              label="Saha / tarih"
-              value="İstanbul Üretim · 2 Eyl 2026"
-            />
-            <MockField
-              label="Kapsam"
-              value="GMP kalite sistemi ve veri bütünlüğü"
-              wide
-            />
-          </Box>
-        </MockSection>
-        <MockAction text="Hazırlığı başlat" />
-      </>
-    );
-  if (step === 1)
-    return (
-      <MockSection
-        icon={<DescriptionRounded />}
-        title="Kontrollü talep paketi"
-        badge="2 doküman"
-      >
-        <MockTable
-          headers={["M.04 dokümanı", "Gizlilik", "Durum"]}
-          rows={[
-            ["SOP-QA-001 · v3.2", "Kurum İçi", "Aktarım bekliyor"],
-            ["SOP-URT-014 · v5.0", "Gizli", "Aktarım bekliyor"],
-          ]}
-          highlightRow={1}
-        />
-      </MockSection>
-    );
-  if (step === 2)
-    return (
-      <MockSection
-        icon={<UploadFileRounded />}
-        title="Erişim kayıtlı dışa aktarım"
-        badge="Manifest v1"
-      >
-        <Box className="mock-check-list">
-          <span>
-            <CheckCircleRounded />
-            Yetkili alıcı: TİTCK denetim ekibi
-          </span>
-          <span>
-            <CheckCircleRounded />
-            Amaç ve gizlilik sınırı kaydedildi
-          </span>
-          <span>
-            <LockRounded />
-            Manifest ve SHA-256 kanıtı korundu
-          </span>
-        </Box>
-      </MockSection>
-    );
-  if (step === 3)
-    return (
-      <MockSection
-        icon={<WarningAmberRounded />}
-        title="Resmi denetim bulgusu"
-        badge="Majör"
-      >
-        <MockField label="Otorite referansı" value="OBS-2026-04" active />
-        <MockField
-          label="Bulgu"
-          value="Yetki matrisi pozisyon değişikliklerini güncel yansıtmıyor."
-          wide
-        />
-        <Paper variant="outlined" className="mock-linked-record">
-          <LinkRounded />
-          <Box>
-            <Typography variant="caption">OTOMATİK M.02 BAĞLANTISI</Typography>
-            <Typography sx={{ fontWeight: 800 }}>DÖF-2026-000027</Typography>
-          </Box>
-        </Paper>
-      </MockSection>
-    );
-  if (step === 4)
-    return (
-      <MockSection
-        icon={<AssignmentRounded />}
-        title="Resmi cevap ve kurumsal taahhüt"
-        badge="Cevap planı"
-      >
-        <MockField
-          label="Resmi cevap"
-          value="Bulgu kabul edilmiş, kapsam analizi tamamlanmıştır."
-          wide
-        />
-        <MockField
-          label="Taahhüt"
-          value="Yetki matrisi revizyonu ve pozisyon eğitimleri 30 gün içinde tamamlanacaktır."
-          active
-          wide
-        />
-      </MockSection>
-    );
-  if (step === 5)
-    return (
-      <ApprovalScreen
-        title="DÖF / aksiyon doğrulaması"
-        items={[
-          "DÖF aksiyonları doğrulandı",
-          "Taahhüt kanıtları kabul edildi",
-          "Etkinlik sonucu uygun",
-        ]}
-        action="Resmi bulguyu kapat"
-      />
-    );
-  if (step === 6)
-    return (
-      <MockSection
-        icon={<MarkEmailReadRounded />}
-        title="Otorite kapanış mektubu"
-        badge="Kabul edildi"
-      >
-        <MockField label="Kapanış referansı" value="TİTCK-KP-2026-117" active />
-        <MockField
-          label="Kanıt"
-          value="İmzalı kapanış mektubu ve resmi kayıt numarası"
-          wide
-        />
-      </MockSection>
-    );
-  if (step === 7)
-    return (
-      <ApprovalScreen
-        title="Mesul Müdür kapanış kapısı"
-        items={[
-          "Tüm resmi bulgular kapalı",
-          "Kapanış mektubu kabul edildi",
-          "Talep paketi erişim günlüğü eksiksiz",
-        ]}
-        action="Yetkili kapanışını onayla"
-      />
-    );
-  return (
-    <MockSection
-      icon={<VerifiedRounded />}
-      title="Dış denetim paketi tamamlandı"
-      badge="Kapalı"
-    >
-      <Box className="mock-check-list">
-        <span>
-          <CheckCircleRounded />
-          Resmi bildirim ve kapsam
-        </span>
-        <span>
-          <CheckCircleRounded />
-          Doküman paylaşım manifestleri
-        </span>
-        <span>
-          <CheckCircleRounded />
-          Bulgu, DÖF ve kapanış mektubu zinciri
-        </span>
-      </Box>
-    </MockSection>
-  );
-}
-
-function InternalAuditSimulation({ step }: { step: number }) {
-  if (step === 0)
-    return (
-      <>
-        <MockSection
-          icon={<FactCheckRounded />}
-          title="2026 iç denetim programı"
-          badge="Yıllık plan"
-        >
-          <Box className="mock-field-grid">
-            <MockField label="Denetlenen bölüm" value="Üretim" active />
-            <MockField
-              label="Baş denetçi"
-              value="Ayşe Demir · Kalite Güvence"
-            />
-            <MockField
-              label="Kapsam"
-              value="Batch kayıtları, veri bütünlüğü ve sapma bağlantıları"
-              wide
-            />
-          </Box>
-        </MockSection>
-        <MockAction text="Denetim hazırlığını başlat" />
-      </>
-    );
-  if (step === 1)
-    return (
-      <MockSection
-        icon={<RuleRounded />}
-        title="Bağımsızlık ve hazırlık"
-        badge="Kontrol başarılı"
-      >
-        <Box className="mock-check-list">
-          <span>
-            <CheckCircleRounded />
-            Denetçi bölümü: Kalite Güvence
-          </span>
-          <span>
-            <CheckCircleRounded />
-            Denetlenen bölüm: Üretim
-          </span>
-          <span>
-            <CheckCircleRounded />
-            Çıkar çatışması bulunmuyor
-          </span>
-        </Box>
-      </MockSection>
-    );
-  if (step === 2)
-    return (
-      <MockSection
-        icon={<LockRounded />}
-        title="Soru listesi kilidi"
-        badge="Sürüm 2026.1"
-      >
-        <MockField
-          label="Kontrollü soru listesi"
-          value="18 soru · ISO 9001 / şirket SOP referansları"
-          active
-          wide
-        />
-        <MockAction text="Planı onayla ve sürümü kilitle" />
-      </MockSection>
-    );
-  if (step === 3)
-    return (
-      <MockSection
-        icon={<PlaylistAddCheckRounded />}
-        title="Kanıtlı saha uygulaması"
-        badge="12 / 18"
-      >
-        <MockTable
-          headers={["Soru", "Sonuç", "Objektif kanıt"]}
-          rows={[
-            ["Batch kaydı izlenebilir mi?", "Uygun", "BPR-260825"],
-            ["Yetki matrisi güncel mi?", "Uygunsuz", "FRM-YET-04"],
-            ["Sapmalar bağlı mı?", "Uygun", "SP-2026-000007"],
-          ]}
-          highlightRow={1}
-        />
-      </MockSection>
-    );
-  if (step === 4)
-    return (
-      <MockSection
-        icon={<WarningAmberRounded />}
-        title="Risk sınıflı bulgu"
-        badge="Majör · 16"
-      >
-        <Box className="mock-metric-grid">
-          <MiniMetric label="Etki" value="4" accent />
-          <MiniMetric label="Olasılık" value="4" />
-          <MiniMetric label="Risk" value="16" accent />
-        </Box>
-        <Paper variant="outlined" className="mock-linked-record">
-          <LinkRounded />
-          <Box>
-            <Typography variant="caption">OTOMATİK M.02 BAĞLANTISI</Typography>
-            <Typography sx={{ fontWeight: 800 }}>DÖF-2026-000021</Typography>
-          </Box>
-        </Paper>
-      </MockSection>
-    );
-  if (step === 5)
-    return (
-      <MockSection
-        icon={<GroupsRounded />}
-        title="Bölüm yanıtı ve aksiyon"
-        badge="Yanıtlandı"
-      >
-        <MockField
-          label="Neden / yanıt"
-          value="Pozisyon değişikliği sonrası yetki matrisi revizyonu gecikmiştir."
-          wide
-        />
-        <MockField
-          label="Düzeltici aksiyon"
-          value="Matris revizyonu ve ilgili çalışan eğitimi"
-          active
-          wide
-        />
-      </MockSection>
-    );
-  if (step === 6)
-    return (
-      <ApprovalScreen
-        title="DÖF ve bulgu doğrulaması"
-        items={[
-          "DÖF aksiyonları tamamlandı",
-          "Etkinlik kanıtı kabul edildi",
-          "Bulgu kapanış notu hazır",
-        ]}
-        action="Bulguyu kapat"
-      />
-    );
-  if (step === 7)
-    return (
-      <MockSection
-        icon={<CheckCircleRounded />}
-        title="Bulgu kapanış kapısı"
-        badge="0 açık bulgu"
-      >
-        <Box className="mock-check-list">
-          <span>
-            <CheckCircleRounded />
-            Majör bulgu kapalı
-          </span>
-          <span>
-            <CheckCircleRounded />
-            M.02 DÖF kapalı
-          </span>
-          <span>
-            <CheckCircleRounded />
-            Doğrulama kanıtı kayıtlı
-          </span>
-        </Box>
-      </MockSection>
-    );
-  return (
-    <ApprovalScreen
-      title="İç denetim kapanış kontrolü"
-      items={[
-        "Kilitli soru listesi eksiksiz yanıtlandı",
-        "Tüm bulgu ve DÖF bağlantıları kapalı",
-        "Kronolojik denetim geçmişi tamamlandı",
-      ]}
-      action="Denetimi kapat"
-    />
-  );
-}
-
-function ComplaintSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <>
-          <MockSection
-            icon={<ChatBubbleOutlineRounded />}
-            title="Yeni müşteri bildirimi"
-            badge="SLA başlatıldı"
-          >
-            <Box className="mock-field-grid">
-              <MockField
-                label="Müşteri / ülke"
-                value="Anadolu Sağlık · Türkiye"
-                active
-              />
-              <MockField
-                label="Ürün / batch"
-                value="QMS Tablet 10 mg · B260825-A"
-              />
-              <MockField
-                label="Bildirim"
-                value="Blister içinde kırık tablet ve eksik göz"
-                wide
-              />
-              <MockField
-                label="Nihai yanıt hedefi"
-                value="24 Eyl 2026 · 17:00"
-              />
-            </Box>
-          </MockSection>
-          <MockAction text="Şikâyeti kontrollü kayda al" />
-        </>
-      );
-    case 1:
-      return (
-        <MockSection
-          icon={<WarningAmberRounded />}
-          title="Risk ve güvenlik triyajı"
-          badge="Majör"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Ürün kalitesi" value="Evet" accent />
-            <MiniMetric label="Sağlık etkisi" value="Bildirildi" />
-            <MiniMetric label="Advers olay" value="Şüpheli" accent />
-          </Box>
-          <Paper variant="outlined" className="mock-linked-record">
-            <LinkRounded />
-            <Box>
-              <Typography variant="caption">
-                OTOMATİK M.01 BAĞLANTISI
-              </Typography>
-              <Typography sx={{ fontWeight: 800 }}>
-                SP-2026-000007 oluşturulacak
-              </Typography>
-            </Box>
-          </Paper>
-        </MockSection>
-      );
-    case 2:
-      return (
-        <MockSection
-          icon={<MarkEmailReadRounded />}
-          title="Ön müşteri yanıtı"
-          badge="Sürüm 1"
-        >
-          <MockField
-            label="Onaylanacak mesaj"
-            value="Bildiriminiz alınmış, batch kontrol altına alınmış ve bölüm araştırmaları başlatılmıştır."
-            active
-            wide
-          />
-          <MockAction text="Ön yanıt sürümünü onayla" />
-        </MockSection>
-      );
-    case 3:
-      return (
-        <MockSection
-          icon={<GroupsRounded />}
-          title="Paralel bölüm araştırmaları"
-          badge="3 bölüm"
-        >
-          <MockTable
-            headers={["Bölüm", "Durum", "Kök neden katkısı"]}
-            rows={[
-              ["Üretim", "Tamamlandı", "Kapatma basıncı"],
-              ["Kalite Kontrol", "Tamamlandı", "Numune doğrulandı"],
-              ["Kalite Güvence", "Bekliyor", "—"],
-            ]}
-            highlightRow={2}
-          />
-        </MockSection>
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<ManageSearchRounded />}
-          title="Ortak etki ve kök neden"
-          badge="Batch etkisi"
-        >
-          <MockField
-            label="Etki"
-            value="B260825-A ile sınırlı ambalaj bütünlüğü etkisi"
-            wide
-          />
-          <MockField
-            label="Doğrulanmış kök neden"
-            value="Blister kapatma basıncı kontrol sıklığının yetersizliği"
-            active
-            wide
-          />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <MockSection
-          icon={<HealthAndSafetyRounded />}
-          title="Gizlilik sınırlı farmakovijilans aktarımı"
-          badge="FV-2026-000001"
-        >
-          <Box className="mock-check-list">
-            <span>
-              <CheckCircleRounded />
-              Ürün ve batch aktarılır
-            </span>
-            <span>
-              <CheckCircleRounded />
-              Şikâyet teknik kimliği aktarılır
-            </span>
-            <span>
-              <LockRounded />
-              Müşteri adı ve sağlık anlatısı aktarılmaz
-            </span>
-          </Box>
-        </MockSection>
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<TaskAltRounded />}
-          title="DÖF bağlantı kararı"
-          badge="M.02"
-        >
-          <Box className="mock-decision-grid">
-            <DecisionCard
-              title="DÖF gerekli"
-              text="Kök neden aksiyonu ve etkinlik izlemesi"
-              selected
-            />
-            <DecisionCard
-              title="DÖF gerekli değil"
-              text="Gerekçeli kalite kararı"
-            />
-          </Box>
-          <Paper variant="outlined" className="mock-linked-record">
-            <LinkRounded />
-            <Box>
-              <Typography variant="caption">OLUŞTURULAN KAYIT</Typography>
-              <Typography sx={{ fontWeight: 800 }}>DÖF-2026-000005</Typography>
-            </Box>
-          </Paper>
-        </MockSection>
-      );
-    case 7:
-      return (
-        <MockSection
-          icon={<MarkEmailReadRounded />}
-          title="Nihai müşteri yanıtı"
-          badge="Sürüm 1 · Onay bekliyor"
-        >
-          <MockField
-            label="Araştırma sonucu ve aksiyon"
-            value="Batch etkisi doğrulandı; kapatma basıncı kontrol sıklığı için DÖF başlatıldı."
-            active
-            wide
-          />
-          <MockAction text="Nihai yanıtı onayla" />
-        </MockSection>
-      );
-    default:
-      return (
-        <ApprovalScreen
-          title="Şikâyet kapanış kontrolü"
-          items={[
-            "Ön ve nihai yanıt sürümleri onaylı",
-            "Tüm bölüm araştırmaları tamamlandı",
-            "M.01, M.02 ve FV bağlantıları doğrulandı",
-          ]}
-          action="Şikâyeti kapat"
-        />
-      );
-  }
-}
-
-function DocumentSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <>
-          <MockSection
-            icon={<DescriptionRounded />}
-            title="Yeni kontrollü doküman"
-            badge="Sürüm 0.1"
-          >
-            <Box className="mock-field-grid">
-              <MockField label="Doküman kodu" value="SOP-URT-014" active />
-              <MockField label="Tür / Gizlilik" value="SOP · Kurum İçi" />
-              <MockField
-                label="Kaynak değişiklik"
-                value="DK-2026-000042"
-                wide
-              />
-              <MockField label="Gözden geçirme" value="12 ay" />
-            </Box>
-          </MockSection>
-          <MockAction text="Taslağı oluştur" />
-        </>
-      );
-    case 1:
-      return (
-        <MockSection
-          icon={<ManageSearchRounded />}
-          title="Kontrollü içerik yazımı"
-          badge="Doküman yazarı"
-        >
-          <MockField
-            label="İçerik"
-            value="Amaç · kapsam · sorumluluk · uygulama adımları · kayıtlar"
-            active
-            wide
-          />
-          <MockField
-            label="Değişiklik özeti"
-            value="Yeni alarm kontrol adımı eklendi."
-            wide
-          />
-          <MockAction text="İncelemeye gönder" />
-        </MockSection>
-      );
-    case 2:
-      return (
-        <MockSection
-          icon={<GroupsRounded />}
-          title="Paralel sürüm incelemeleri"
-          badge="2 / 3 tamamlandı"
-        >
-          <MockTable
-            headers={["Bölüm", "Durum", "Görüş"]}
-            rows={[
-              ["Üretim", "Uygun", "Uygulanabilir"],
-              ["Kalite Güvence", "Uygun", "GMP uygun"],
-              ["Ruhsatlandırma", "Bekliyor", "—"],
-            ]}
-            highlightRow={2}
-          />
-        </MockSection>
-      );
-    case 3:
-      return (
-        <ApprovalScreen
-          title="Sürüm onayı"
-          items={[
-            "Tüm bölüm incelemeleri tamamlandı",
-            "Değişiklik özeti içerikle uyumlu",
-            "Hazırlayan ve onaylayan farklı kullanıcı",
-          ]}
-          action="Sürüm 0.1’i onayla"
-        />
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Yürürlük öncesi eğitim"
-          badge="1 / 2 tamamlandı"
-        >
-          <MockTable
-            headers={["Pozisyon", "Kanıt", "Durum"]}
-            rows={[
-              ["Hat Lideri", "Sınav %100", "Tamamlandı"],
-              ["Üretim Operatörü", "—", "Bekliyor"],
-            ]}
-            highlightRow={1}
-          />
-          <MockAction text="Eğitim kanıtını kaydet" />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <MockSection
-          icon={<VerifiedRounded />}
-          title="Yürürlüğe alma"
-          badge="Sürüm 0.1"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Onay elektronik imzası mevcut" />
-            <MockCheck text="Zorunlu eğitimler tamamlandı" />
-            <MockCheck text="Planlanan yürürlük tarihi geldi" />
-          </Box>
-          <MockAction text="Dokümanı yürürlüğe al" />
-        </MockSection>
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<Inventory2Rounded />}
-          title="Dağıtım ve okuma kanıtı"
-          badge="Kontrollü"
-        >
-          <MockTable
-            headers={["Kayıt", "Kullanıcı / Birim", "Durum"]}
-            rows={[
-              ["Okuma", "Ayşe Yılmaz", "İmzalandı"],
-              ["KK-001", "Dolum Hattı", "Dağıtımda"],
-            ]}
-            highlightRow={1}
-          />
-        </MockSection>
-      );
-    case 7:
-      return (
-        <MockSection
-          icon={<ReplayRounded />}
-          title="Minör revizyon"
-          badge="Sürüm 0.2"
-        >
-          <Box className="mock-compare">
-            <DecisionCard title="Önceki 0.1" text="Temizlik süresi 20 dakika" />
-            <DecisionCard
-              title="Yeni 0.2"
-              text="Temizlik süresi 25 dakika"
-              selected
-            />
-          </Box>
-          <MockField
-            label="Revizyon özeti"
-            value="Validasyon sonucuna göre süre güncellendi."
-            active
-            wide
-          />
-        </MockSection>
-      );
-    default:
-      return (
-        <MockSection
-          icon={<LockRounded />}
-          title="Yürürlükten kaldırma ve arşiv"
-          badge="Arşiv kapısı"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Yeni sürüm yürürlükte" />
-            <MockCheck text="Eski elektronik sürüm salt okunur" />
-            <MockCheck text="Tüm kontrollü kopyalar iade / imha edildi" />
-          </Box>
-          <MockAction text="Dokümanı arşivle" />
-        </MockSection>
-      );
-  }
-}
-
-function TrainingSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <MockSection
-          icon={<AccountTreeRounded />}
-          title="Pozisyon–eğitim matrisi"
-          badge="Etkin"
-        >
-          <MockTable
-            headers={["Pozisyon", "Eğitim", "Yöntem", "Geçerlilik"]}
-            rows={[
-              ["Üretim Operatörü", "SOP-URT-014", "Oku + sınav", "12 ay"],
-              ["Hat Lideri", "GMP-2026", "Sınıf + pratik", "24 ay"],
-            ]}
-            highlightRow={0}
-          />
-        </MockSection>
-      );
-    case 1:
-      return (
-        <MockSection
-          icon={<LinkRounded />}
-          title="M.04 sürümünden otomatik görev"
-          badge="Doküman kapısı"
-        >
-          <Paper variant="outlined" className="mock-linked-record">
-            <DescriptionRounded />
-            <Box>
-              <Typography variant="caption">KAYNAK DOKÜMAN</Typography>
-              <Typography>SOP-URT-014 · Sürüm 0.2 · Eğitim bekliyor</Typography>
-            </Box>
-          </Paper>
-          <Box className="mock-check-list" style={{ marginTop: 12 }}>
-            <MockCheck text="Etkilenen pozisyon: Üretim Operatörü" />
-            <MockCheck text="Hedef: planlanan yürürlük tarihi" />
-          </Box>
-        </MockSection>
-      );
-    case 2:
-      return (
-        <MockSection
-          icon={<GroupsRounded />}
-          title="Kontrollü eğitim ataması"
-          badge="Atandı"
-        >
-          <Box className="mock-field-grid">
-            <MockField
-              label="Katılımcı"
-              value="Mehmet Kaya · Üretim Operatörü"
-              active
-            />
-            <MockField label="Hedef" value="02 Eyl 2026" />
-            <MockField label="Değerlendirme" value="Oku ve anla · Geçme %80" />
-            <MockField label="Kritik yeterlilik" value="Evet · 12 ay" />
-          </Box>
-        </MockSection>
-      );
-    case 3:
-      return (
-        <MockSection
-          icon={<MenuBookRounded />}
-          title="Okuma ve anlama imzası"
-          badge="Katılımcı"
-        >
-          <MockField
-            label="Elektronik imza anlamı"
-            value="Dokümanı okudum, anladım ve görevimde uygulayacağım."
-            active
-            wide
-          />
-          <MockAction text="Okudum ve anladım olarak imzala" />
-        </MockSection>
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Sınav ve pratik değerlendirme"
-          badge="1. deneme"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Geçme" value="%80" />
-            <MiniMetric label="Puan" value="%92" accent />
-            <MiniMetric label="Pratik" value="Uygun" />
-            <MiniMetric label="Kalan deneme" value="2" />
-          </Box>
-          <MockField
-            label="Kanıt"
-            value="EGT-F-01 sınav formu · iş başı gözlem kaydı"
-            active
-            wide
-          />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <ApprovalScreen
-          title="Yeterlilik onayı"
-          items={[
-            "Okuma imzası mevcut",
-            "Sınav puanı ≥ %80",
-            "Pratik uygulama uygun",
-            "Katılımcı ve onaylayan farklı kullanıcı",
-          ]}
-          action="Yeterliliği onayla"
-        />
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<VerifiedRounded />}
-          title="Aktif yeterlilik"
-          badge="12 ay geçerli"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Tamamlanma" value="25 Ağu" />
-            <MiniMetric label="Geçerlilik" value="25 Ağu 27" accent />
-            <MiniMetric label="Durum" value="Aktif" />
-          </Box>
-          <Paper variant="outlined" className="mock-lock-message">
-            <LockRounded />
-            <Typography>
-              M.04 doküman eğitim kapısı kapandı; sürüm yürürlüğe alınabilir.
-            </Typography>
-          </Paper>
-        </MockSection>
-      );
-    default:
-      return (
-        <MockSection
-          icon={<ReplayRounded />}
-          title="Yenileme ihtiyacı"
-          badge="30 gün kaldı"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Çalışan ve pozisyon hâlâ etkin" />
-            <MockCheck text="Yeni doküman revizyonu kontrol edildi" />
-            <MockCheck text="Yeni görev önceki kanıtı değiştirmeden açıldı" />
-          </Box>
-          <MockAction text="Yenileme görevini ata" />
-        </MockSection>
-      );
-  }
-}
-
-function DeviationSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <>
-          <MockSection
-            icon={<DescriptionRounded />}
-            title="Yeni sapma bildirimi"
-            badge="Taslak"
-          >
-            <Box className="mock-field-grid">
-              <MockField
-                label="Sapma başlığı"
-                value="Dolum sıcaklığı limit sapması"
-                active
-              />
-              <MockField label="Tespit edilen bölüm" value="Üretim" />
-              <MockField
-                label="Uygunsuzluk tanımı"
-                value="Dolum sıcaklığı 25°C limitini aştı."
-                wide
-              />
-              <MockField
-                label="Acil aksiyon"
-                value="Hat durduruldu, ürün karantinaya alındı."
-                wide
-              />
-            </Box>
-          </MockSection>
-          <MockAction text="Taslağı kaydet" />
-        </>
-      );
-    case 1:
-      return (
-        <>
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Olasılık" value="2" />
-            <MiniMetric label="Şiddet" value="4" />
-            <MiniMetric label="Tespit" value="4" />
-            <MiniMetric label="RPN" value="32" accent />
-          </Box>
-          <MockSection
-            icon={<WarningAmberRounded />}
-            title="Otomatik risk kararı"
-            badge="MAJÖR"
-          >
-            <Typography className="mock-equation">2 × 4 × 4 = 32</Typography>
-            <Typography variant="body2">
-              DÖF bağlantısı zorunlu. Hedef kapanış: 7 gün.
-            </Typography>
-          </MockSection>
-          <MockAction text="Kontrollü iş akışına gönder" />
-        </>
-      );
-    case 2:
-      return (
-        <MockSection
-          icon={<FactCheckRounded />}
-          title="KG ön inceleme"
-          badge="Atanan: KG Değerlendiricisi"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Kapsam ve sınıflandırma uygun" />
-            <MockCheck text="Acil aksiyon yeterli" />
-            <MockCheck text="Araştırmacı atanacak" />
-          </Box>
-          <MockField
-            label="Ön inceleme notu"
-            value="Proses araştırması ve batch değerlendirmesi gerekli."
-            active
-            wide
-          />
-        </MockSection>
-      );
-    case 3:
-      return (
-        <MockSection
-          icon={<ManageSearchRounded />}
-          title="Kök neden araştırması"
-          badge="5 Neden"
-        >
-          <Box className="mock-why-chain">
-            {[
-              "Sıcaklık yükseldi",
-              "Sensör geç uyardı",
-              "Alarm eşiği hatalı",
-              "Revizyon aktarılmadı",
-              "Değişiklik kontrolü eksik",
-            ].map((item, index) => (
-              <Box key={item}>
-                <span>{index + 1}</span>
-                <Typography>{item}</Typography>
-                {index < 4 && <ArrowForwardRounded />}
-              </Box>
-            ))}
-          </Box>
-          <MockField
-            label="Doğrulanmış kök neden"
-            value="Onaylı alarm eşiği PLC reçetesine aktarılmamış."
-            active
-            wide
-          />
-        </MockSection>
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<Inventory2Rounded />}
-          title="Batch / seri etkisi"
-          badge="2 batch"
-        >
-          <MockTable
-            headers={["Batch", "Etkilendi mi?", "Dispozisyon"]}
-            rows={[
-              ["B-260824", "Evet", "Beklet"],
-              ["B-260825", "Hayır", "Serbest bırak"],
-            ]}
-            highlightRow={0}
-          />
-          <MockAction text="Etki değerlendirmesini tamamla" />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <MockSection
-          icon={<VerifiedRounded />}
-          title="Kalite değerlendirmesi"
-          badge="Karar bekliyor"
-        >
-          <Box className="mock-decision-grid">
-            <DecisionCard
-              title="DÖF gerekli"
-              text="RPN 32 · Majör sapma"
-              selected
-            />
-            <DecisionCard
-              title="Etkinlik izlemesi"
-              text="30 günlük gözlem"
-              selected
-            />
-          </Box>
-          <Paper variant="outlined" className="mock-linked-record">
-            <LinkRounded />
-            <Box>
-              <Typography variant="caption">İLİŞKİLİ KAYIT</Typography>
-              <Typography>DÖF-2026-000064 · Taslak</Typography>
-            </Box>
-          </Paper>
-        </MockSection>
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<AssignmentRounded />}
-          title="Bağlı DÖF ilerlemesi"
-          badge="M.02 bağlantısı"
-        >
-          <Typography variant="body2" color="text.secondary">
-            Sapma, bağlı DÖF tamamlanana kadar kontrollü olarak bekler.
-          </Typography>
-          <Box className="mock-progress-card">
-            <Stack direction="row" sx={{ justifyContent: "space-between" }}>
-              <Typography>DÖF aksiyonları</Typography>
-              <strong>2 / 3</strong>
-            </Stack>
-            <LinearProgress variant="determinate" value={66} />
-            <Stack direction="row" spacing={1}>
-              <Chip size="small" color="success" label="Sensör kalibrasyonu" />
-              <Chip size="small" color="warning" label="SOP revizyonu" />
-            </Stack>
-          </Box>
-        </MockSection>
-      );
-    case 7:
-      return (
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Etkinlik değerlendirmesi"
-          badge="30 gün"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Tekrar sayısı" value="0" accent />
-            <MiniMetric label="Uygun batch" value="12/12" />
-            <MiniMetric label="Alarm testi" value="%100" />
-          </Box>
-          <MockField
-            label="Etkinlik sonucu"
-            value="Başarı kriterleri karşılandı; sapma tekrar etmedi."
-            active
-            wide
-          />
-          <MockAction text="Etkili olarak onayla" />
-        </MockSection>
-      );
-    default:
-      return (
-        <MockSection
-          icon={<LockRounded />}
-          title="Kapanış onayı"
-          badge="Onaylayan"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Araştırma ve etki tamamlandı" />
-            <MockCheck text="Bağlı DÖF kapalı" />
-            <MockCheck text="Etkinlik başarılı" />
-            <MockCheck text="Açık bağımlılık yok" />
-          </Box>
-          <MockField
-            label="Kapanış gerekçesi"
-            value="Tüm kalite kontrolleri ve kanıt zinciri tamamlandı."
-            active
-            wide
-          />
-          <MockAction text="Sapma kaydını kapat" />
-        </MockSection>
-      );
-  }
-}
-
-function CapaSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <>
-          <MockSection
-            icon={<DescriptionRounded />}
-            title="Yeni DÖF kaydı"
-            badge="Taslak"
-          >
-            <Box className="mock-field-grid">
-              <MockField
-                label="Problem tanımı"
-                value="Alarm eşiği reçeteye aktarılmamış."
-                active
-              />
-              <MockField label="Sorumlu" value="Kalite Güvence" />
-              <MockField
-                label="Doğrulanmış kök neden"
-                value="Değişiklik kontrolü kapanış kontrol listesi eksik."
-                wide
-              />
-              <MockField label="Hedef tarih" value="30.09.2026" />
-            </Box>
-          </MockSection>
-          <MockAction text="Kapsam onayına gönder" />
-        </>
-      );
-    case 1:
-      return (
-        <ApprovalScreen
-          title="Kapsam yeterliliği"
-          items={[
-            "Etkilenen prosesler tanımlı",
-            "Sapma kaynağı bağlı",
-            "Düzenleyici etki değerlendirildi",
-          ]}
-          action="Kapsamı onayla"
-        />
-      );
-    case 2:
-      return (
-        <ApprovalScreen
-          title="Kök neden kanıtları"
-          items={[
-            "5 Neden analizi tamamlandı",
-            "Kök neden kanıtla doğrulandı",
-            "Semptom ile kök neden ayrıldı",
-          ]}
-          action="Kök nedeni onayla"
-        />
-      );
-    case 3:
-      return (
-        <MockSection
-          icon={<AssignmentRounded />}
-          title="Aksiyon planlama"
-          badge="2 aksiyon"
-        >
-          <MockTable
-            headers={["Tür", "Aksiyon", "Sorumlu", "Hedef"]}
-            rows={[
-              ["Düzeltici", "PLC reçetesini güncelle", "Otomasyon", "05 Eyl"],
-              ["Önleyici", "SOP kontrol adımı ekle", "KG", "12 Eyl"],
-            ]}
-            highlightRow={1}
-          />
-          <MockAction text="Yeni aksiyon ekle" />
-        </MockSection>
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<LockRounded />}
-          title="Plan onayı ve sabitleme"
-          badge="Revizyon 1"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Sorumlular görevi kabul etti" />
-            <MockCheck text="Hedef tarihler riskle uyumlu" />
-            <MockCheck text="Etkinlik planı: 30 gün / 12 batch" />
-          </Box>
-          <Paper variant="outlined" className="mock-lock-message">
-            <LockRounded />
-            <Typography>
-              Onayla birlikte plan alanları kilitlenir ve sonraki değişiklikler
-              revizyon olarak izlenir.
-            </Typography>
-          </Paper>
-          <MockAction text="Planı onayla" />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <MockSection
-          icon={<UploadFileRounded />}
-          title="Aksiyon tamamlama kanıtı"
-          badge="Aksiyon sorumlusu"
-        >
-          <MockField
-            label="Tamamlama açıklaması"
-            value="PLC reçetesi onaylı eşiklerle güncellendi."
-            active
-            wide
-          />
-          <Paper variant="outlined" className="mock-upload">
-            <UploadFileRounded />
-            <Box>
-              <Typography>PLC_Test_Raporu_v2.pdf</Typography>
-              <Typography variant="caption">
-                2.4 MB · elektronik imza doğrulandı
-              </Typography>
-            </Box>
-            <Chip color="success" size="small" label="Yüklendi" />
-          </Paper>
-          <MockAction text="Tamamlandı bildir" />
-        </MockSection>
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<FactCheckRounded />}
-          title="KG kanıt doğrulaması"
-          badge="Karşılaştırmalı inceleme"
-        >
-          <Box className="mock-compare">
-            <DecisionCard title="Planlanan" text="PLC alarm eşiğini 25°C yap" />
-            <DecisionCard
-              title="Kanıtlanan"
-              text="Test sonucu: 25°C alarmı başarılı"
-              selected
-            />
-          </Box>
-          <MockField
-            label="KG doğrulama notu"
-            value="Kanıt planlanan aksiyonu tam olarak karşılıyor."
-            active
-            wide
-          />
-          <MockAction text="Kanıtı doğrula" />
-        </MockSection>
-      );
-    case 7:
-      return (
-        <MockSection
-          icon={<CalendarMonthRounded />}
-          title="Etkinlik gözlem süresi"
-          badge="18 gün kaldı"
-        >
-          <Box className="mock-calendar">
-            <CalendarMonthRounded />
-            <Box>
-              <Typography variant="h5">12 Eki 2026</Typography>
-              <Typography color="text.secondary">
-                Etkinlik değerlendirmesinin açılacağı tarih
-              </Typography>
-            </Box>
-          </Box>
-          <LinearProgress variant="determinate" value={40} />
-          <Typography variant="caption">
-            12 / 30 günlük gözlem tamamlandı
-          </Typography>
-        </MockSection>
-      );
-    case 8:
-      return (
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Etkinlik başarı kriterleri"
-          badge="Değerlendiren"
-        >
-          <MockTable
-            headers={["Kriter", "Hedef", "Sonuç"]}
-            rows={[
-              ["Sapma tekrarı", "0", "0"],
-              ["Uygun batch", "≥ 10", "12"],
-              ["Alarm testi", "%100", "%100"],
-            ]}
-            highlightRow={2}
-          />
-          <Box className="mock-decision-grid">
-            <DecisionCard
-              title="Etkili"
-              text="Kapanış onayına gönder"
-              selected
-            />
-            <DecisionCard title="Etkisiz" text="Aksiyon planına geri dön" />
-          </Box>
-        </MockSection>
-      );
-    default:
-      return (
-        <MockSection
-          icon={<TaskAltRounded />}
-          title="DÖF kapanış kontrolü"
-          badge="Onaylayan"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Tüm aksiyonlar KG tarafından doğrulandı" />
-            <MockCheck text="Etkinlik kriterleri karşılandı" />
-            <MockCheck text="Açık görev ve bağımlılık yok" />
-            <MockCheck text="Maker-checker kontrolü başarılı" />
-          </Box>
-          <MockField
-            label="Kapanış notu"
-            value="DÖF hedeflenen kalite sonucuna ulaşmıştır."
-            active
-            wide
-          />
-          <MockAction text="DÖF kaydını kapat" />
-        </MockSection>
-      );
-  }
-}
-
-function ChangeSimulation({ step }: { step: number }) {
-  switch (step) {
-    case 0:
-      return (
-        <>
-          <MockSection
-            icon={<DescriptionRounded />}
-            title="Yeni değişiklik kaydı"
-            badge="Taslak"
-          >
-            <Box className="mock-field-grid">
-              <MockField
-                label="Mevcut durum"
-                value="PLC alarm eşiği 28°C"
-                active
-              />
-              <MockField label="Önerilen durum" value="Onaylı eşik 25°C" />
-              <MockField
-                label="Etkilenen bölümler"
-                value="Üretim · KG · Validasyon"
-                wide
-              />
-              <MockField
-                label="Geri dönüş planı"
-                value="Önceki PLC reçetesini kontrollü geri yükle"
-                wide
-              />
-            </Box>
-          </MockSection>
-          <MockAction text="Değişiklik taslağını kaydet" />
-        </>
-      );
-    case 1:
-      return (
-        <MockSection
-          icon={<FactCheckRounded />}
-          title="KG ön değerlendirme"
-          badge="Yüksek risk"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Tür" value="Süreç" />
-            <MiniMetric label="Kalıcı" value="Evet" />
-            <MiniMetric label="Validasyon" value="Gerekli" accent />
-            <MiniMetric label="Ruhsat" value="Varyasyon" />
-          </Box>
-          <Box className="mock-check-list">
-            <MockCheck text="Kapsam yeterli" />
-            <MockCheck text="Geri dönüş planı uygulanabilir" />
-            <MockCheck text="Paralel değerlendirme kapsamı doğru" />
-          </Box>
-        </MockSection>
-      );
-    case 2:
-      return (
-        <MockSection
-          icon={<GroupsRounded />}
-          title="Paralel bölüm değerlendirmeleri"
-          badge="2 / 3 tamamlandı"
-        >
-          <MockTable
-            headers={["Bölüm", "Durum", "Gerekli çıktı"]}
-            rows={[
-              ["Üretim", "Uygun", "Hat testi"],
-              ["Kalite Güvence", "Uygun", "SOP revizyonu"],
-              ["Ruhsatlandırma", "Bekliyor", "Varyasyon görüşü"],
-            ]}
-            highlightRow={2}
-          />
-          <MockAction text="Değişiklik kuruluna gönder" />
-        </MockSection>
-      );
-    case 3:
-      return (
-        <MockSection
-          icon={<RuleRounded />}
-          title="Değişiklik kurulu kararı"
-          badge="Kurul gündemi"
-        >
-          <Box className="mock-decision-grid">
-            <DecisionCard
-              title="Fayda / gerekçe"
-              text="Tekrar eden sıcaklık sapmasını önler"
-              selected
-            />
-            <DecisionCard
-              title="Kalan risk"
-              text="Validasyon ile kabul edilebilir"
-              selected
-            />
-          </Box>
-          <MockField
-            label="Kurul karar gerekçesi"
-            value="Koşullu onay: Validasyon ve varyasyon belgesi tamamlanmalı."
-            active
-            wide
-          />
-          <MockAction text="Kurul kararını onayla" />
-        </MockSection>
-      );
-    case 4:
-      return (
-        <MockSection
-          icon={<AssignmentRounded />}
-          title="Onayla sabitlenecek uygulama planı"
-          badge="4 aksiyon"
-        >
-          <MockTable
-            headers={["Kategori", "Çıktı", "Sorumlu", "Hedef"]}
-            rows={[
-              ["Doküman", "SOP revizyonu", "Doküman Kontrol", "05 Eyl"],
-              ["Eğitim", "Operatör eğitimi", "Eğitim", "08 Eyl"],
-              ["Validasyon", "PQ raporu", "Validasyon", "12 Eyl"],
-              ["Teknik", "PLC güncelleme", "Otomasyon", "12 Eyl"],
-            ]}
-            highlightRow={2}
-          />
-        </MockSection>
-      );
-    case 5:
-      return (
-        <MockSection
-          icon={<UploadFileRounded />}
-          title="Uygulama kanıtları"
-          badge="3 / 4 doğrulandı"
-        >
-          <Box className="mock-progress-card">
-            <Stack direction="row" sx={{ justifyContent: "space-between" }}>
-              <Typography>Devreye alma kapıları</Typography>
-              <strong>%75</strong>
-            </Stack>
-            <LinearProgress variant="determinate" value={75} />
-          </Box>
-          <Paper variant="outlined" className="mock-upload" sx={{ mt: 1.5 }}>
-            <UploadFileRounded />
-            <Box>
-              <Typography>PQ_Raporu_v3.pdf</Typography>
-              <Typography variant="caption">
-                Elektronik imza ve içerik özeti doğrulandı
-              </Typography>
-            </Box>
-            <Chip color="success" size="small" label="KG doğruladı" />
-          </Paper>
-        </MockSection>
-      );
-    case 6:
-      return (
-        <MockSection
-          icon={<VerifiedRounded />}
-          title="Devreye alma onayı"
-          badge="Ayrı e-imza"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Tüm bloklayıcı aksiyonlar doğrulandı" />
-            <MockCheck text="Otorite belgesi: TR-VAR-2026-184" />
-            <MockCheck text="Doküman ve eğitim bağımlılıkları kapalı" />
-          </Box>
-          <Paper variant="outlined" className="mock-lock-message">
-            <LockRounded />
-            <Typography>
-              Bu imza değişikliği devreye alır; kalite kaydını kapatmaz.
-            </Typography>
-          </Paper>
-          <MockAction text="Devreye almayı onayla" />
-        </MockSection>
-      );
-    case 7:
-      return (
-        <MockSection
-          icon={<ScienceRounded />}
-          title="Uygulama sonrası doğrulama"
-          badge="30 günlük izleme"
-        >
-          <Box className="mock-metric-grid">
-            <MiniMetric label="Alarm testi" value="%100" accent />
-            <MiniMetric label="Uygun batch" value="12/12" />
-            <MiniMetric label="Tekrar" value="0" />
-          </Box>
-          <Box className="mock-decision-grid">
-            <DecisionCard
-              title="Başarılı"
-              text="Nihai kapanışa ilerle"
-              selected
-            />
-            <DecisionCard
-              title="Başarısız"
-              text="Kontrollü geri dönüşü başlat"
-            />
-          </Box>
-        </MockSection>
-      );
-    default:
-      return (
-        <MockSection
-          icon={<TaskAltRounded />}
-          title="Nihai kapanış kontrolü"
-          badge="Onaylayan"
-        >
-          <Box className="mock-check-list">
-            <MockCheck text="Devreye alma imzası mevcut" />
-            <MockCheck text="Uygulama sonrası doğrulama başarılı" />
-            <MockCheck text="Doküman, eğitim, validasyon ve risk kapalı" />
-            <MockCheck text="Açık sapma veya DÖF bağımlılığı yok" />
-          </Box>
-          <MockField
-            label="Kapanış gerekçesi"
-            value="Değişiklik hedeflenen sonucu sağladı ve tüm kanıt zinciri tamamlandı."
-            active
-            wide
-          />
-          <MockAction text="Değişiklik kaydını kapat" />
-        </MockSection>
-      );
-  }
-}
-
-function ApprovalScreen({
-  title,
-  items,
-  action,
-}: {
-  title: string;
-  items: string[];
-  action: string;
-}) {
-  return (
-    <MockSection icon={<VerifiedRounded />} title={title} badge="Onaylayan">
-      <Box className="mock-check-list">
-        {items.map((text) => (
-          <MockCheck key={text} text={text} />
-        ))}
-      </Box>
-      <MockField
-        label="Onay notu"
-        value="Kapsam ve sunulan kanıtlar yeterli bulundu."
-        active
-        wide
-      />
-      <MockAction text={action} />
-    </MockSection>
-  );
-}
-function MockSection({
-  icon,
-  title,
-  badge,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  badge: string;
-  children: ReactNode;
-}) {
-  return (
-    <Paper variant="outlined" className="mock-section">
-      <Stack direction="row" className="mock-section-heading">
-        <Stack direction="row" spacing={1}>
-          <Box className="mock-section-icon">{icon}</Box>
-          <Typography sx={{ fontWeight: 800 }}>{title}</Typography>
-        </Stack>
-        <Chip size="small" label={badge} />
-      </Stack>
-      {children}
-    </Paper>
-  );
-}
-function MockField({
-  label,
-  value,
-  active = false,
-  wide = false,
-}: {
-  label: string;
-  value: string;
-  active?: boolean;
-  wide?: boolean;
-}) {
-  return (
-    <Box
-      className={`mock-field ${active ? "is-highlighted" : ""} ${wide ? "is-wide" : ""}`}
-    >
-      <Typography variant="caption">{label}</Typography>
-      <Typography>{value}</Typography>
-      {active && <span className="mock-focus-pulse" />}
+    <Box component="a" href={href} className="module-guide-nav-item">
+      {icon}
+      <span>{label}</span>
+      <b>{count}</b>
     </Box>
   );
 }
-function MockAction({ text }: { text: string }) {
+
+function GuideSectionHeader({ id, eyebrow, title, description, icon }: { id: string; eyebrow: string; title: string; description: string; icon: ReactNode }) {
   return (
-    <Stack direction="row" className="mock-action-row">
-      <Button size="small">Vazgeç</Button>
-      <Button size="small" variant="contained">
-        {text}
-      </Button>
-    </Stack>
-  );
-}
-function MockCheck({ text }: { text: string }) {
-  return (
-    <Stack direction="row" spacing={1}>
-      <CheckCircleRounded />
-      <Typography variant="body2">{text}</Typography>
-    </Stack>
-  );
-}
-function MiniMetric({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <Paper
-      variant="outlined"
-      className={`mock-metric ${accent ? "is-accent" : ""}`}
-    >
-      <Typography variant="caption">{label}</Typography>
-      <Typography variant="h5">{value}</Typography>
-    </Paper>
-  );
-}
-function DecisionCard({
-  title,
-  text,
-  selected = false,
-}: {
-  title: string;
-  text: string;
-  selected?: boolean;
-}) {
-  return (
-    <Paper
-      variant="outlined"
-      className={`mock-decision ${selected ? "is-selected" : ""}`}
-    >
-      <Stack direction="row" spacing={1}>
-        <span>{selected && <CheckCircleRounded />}</span>
-        <Box>
-          <Typography sx={{ fontWeight: 750 }}>{title}</Typography>
-          <Typography variant="caption">{text}</Typography>
-        </Box>
-      </Stack>
-    </Paper>
-  );
-}
-function MockTable({
-  headers,
-  rows,
-  highlightRow = -1,
-}: {
-  headers: string[];
-  rows: string[][];
-  highlightRow?: number;
-}) {
-  return (
-    <Box className="mock-table">
-      <Box className="mock-table-row is-head">
-        {headers.map((item) => (
-          <span key={item}>{item}</span>
-        ))}
+    <Stack id={id} direction="row" spacing={1.5} className="module-guide-section-header">
+      <Box className="module-guide-section-icon">{icon}</Box>
+      <Box>
+        <Typography variant="overline">{eyebrow}</Typography>
+        <Typography variant="h5">{title}</Typography>
+        <Typography color="text.secondary">{description}</Typography>
       </Box>
-      {rows.map((row, index) => (
-        <Box
-          className={`mock-table-row ${index === highlightRow ? "is-highlighted" : ""}`}
-          key={row.join("-")}
-        >
-          {row.map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </Box>
-      ))}
+    </Stack>
+  );
+}
+
+function GuideDetail({ icon, label, text, tone = "default" }: { icon: ReactNode; label: string; text: string; tone?: "default" | "warning" }) {
+  return (
+    <Box className={`module-guide-detail is-${tone}`}>
+      <Box className="module-guide-detail-icon">{icon}</Box>
+      <Box>
+        <Typography variant="overline">{label}</Typography>
+        <Typography variant="body2">{text}</Typography>
+      </Box>
+    </Box>
+  );
+}
+
+function ConnectionDetail({ label, text, tone = "default" }: { label: string; text: string; tone?: "default" | "dependency" }) {
+  return (
+    <Box className={`module-guide-connection-detail is-${tone}`}>
+      <Typography variant="overline">{label}</Typography>
+      <Typography variant="body2">{text}</Typography>
     </Box>
   );
 }

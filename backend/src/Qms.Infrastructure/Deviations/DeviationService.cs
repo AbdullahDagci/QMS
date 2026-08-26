@@ -1,28 +1,24 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.AspNetCore.Identity;
 using Qms.Application.Deviations;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Contracts.Common;
 using Qms.Contracts.Deviations;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.Deviations;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Domain.Notifications;
 using Qms.Infrastructure.Persistence;
-using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Deviations;
 
-public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, UserManager<ApplicationUser> userManager, IDeviationFinalReportService finalReportService)
+public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, IElectronicSignatureService signatures, IDeviationFinalReportService finalReportService)
     : IDeviationService
 {
     public async Task<DeviationLookupsResponse> GetLookupsAsync(CancellationToken cancellationToken)
@@ -469,7 +465,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         var now = timeProvider.GetUtcNow();
         var previousStatus = deviation.Status;
         EnsureMakerChecker(record, request.Transition);
-        await EnsureSignatureAuthenticationAsync(request, cancellationToken);
+        if (IsApprovalTransition(request.Transition))
+            await signatures.AuthenticateAsync(request.SignaturePassword, request.SignatureMeaningAccepted, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         switch (request.Transition.Trim().ToLowerInvariant())
@@ -563,9 +560,23 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         if (IsApprovalTransition(request.Transition))
         {
             var meaning = SignatureMeaning(request.Transition);
-            var signedContent = $"Deviation|{deviation.Id}|{deviation.Version}|{request.Transition.Trim().ToLowerInvariant()}|{request.Note?.Trim()}";
-            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signedContent)));
-            dbContext.ElectronicSignatures.Add(ElectronicSignature.Create(record.Id, deviation.Version, currentUser.Id, currentUser.DisplayName, meaning, now, contentHash, request.Note));
+            var investigations = await dbContext.DeviationInvestigations.AsNoTracking()
+                .Where(item => item.DeviationId == deviation.Id).ToListAsync(cancellationToken);
+            var batchImpacts = await dbContext.DeviationBatchImpacts.AsNoTracking()
+                .Where(item => item.DeviationId == deviation.Id).ToListAsync(cancellationToken);
+            var linkedCapas = await dbContext.Capas.AsNoTracking()
+                .Where(item => item.SourceDeviationId == deviation.Id)
+                .Select(item => new { item.Id, item.Status, item.Version }).ToListAsync(cancellationToken);
+            dbContext.ElectronicSignatures.Add(signatures.CreateInternal(
+                record.Id,
+                "Deviation",
+                deviation.Id,
+                deviation.Version,
+                request.Transition,
+                meaning,
+                new { deviation, investigations, batchImpacts, linkedCapas, request.Note },
+                now,
+                request.Note));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -743,16 +754,6 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         "close" => "Sapma nihai kapanış onayı",
         _ => "Sapma iş akışı onayı"
     };
-
-    private async Task EnsureSignatureAuthenticationAsync(TransitionDeviationRequest request, CancellationToken ct)
-    {
-        if (!IsApprovalTransition(request.Transition)) return;
-        if (!request.SignatureMeaningAccepted) throw new QmsForbiddenException("Elektronik imza anlamı açıkça kabul edilmelidir.");
-        if (string.IsNullOrWhiteSpace(request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza için parola yeniden girilmelidir.");
-        var user = await userManager.FindByIdAsync(currentUser.Id.ToString());
-        if (user is null || !user.IsActive || !await userManager.CheckPasswordAsync(user, request.SignaturePassword))
-            throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız.");
-    }
 
     private async Task<bool> CanCurrentUserPerformAsync(string aggregateType, Guid aggregateId, string taskRole, CancellationToken ct)
     {

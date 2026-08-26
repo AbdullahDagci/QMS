@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Qms.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using Qms.Infrastructure.Persistence;
 namespace Qms.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(QmsDbContext))]
-    partial class QmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260826060751_RepairEffectiveDocumentCoordinatorTasks")]
+    partial class RepairEffectiveDocumentCoordinatorTasks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1712,14 +1715,6 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AggregateId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AggregateType")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
                     b.Property<string>("Comment")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -1734,33 +1729,14 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<string>("Operation")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("ProviderType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
                     b.Property<Guid>("QualityRecordId")
                         .HasColumnType("uuid");
 
                     b.Property<long>("RecordVersion")
                         .HasColumnType("bigint");
 
-                    b.Property<string>("SignatureMethod")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<DateTimeOffset>("SignedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<JsonDocument>("SignedSnapshot")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
 
                     b.Property<string>("SignerDisplayNameSnapshot")
                         .IsRequired()
@@ -1773,8 +1749,6 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SignedAtUtc");
-
-                    b.HasIndex("AggregateType", "AggregateId");
 
                     b.HasIndex("QualityRecordId", "RecordVersion");
 

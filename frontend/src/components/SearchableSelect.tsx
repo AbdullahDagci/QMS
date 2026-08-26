@@ -26,6 +26,8 @@ export function SearchableSelect<T extends string | number>({
 
   return (
     <Autocomplete
+      className="qms-searchable-select"
+      fullWidth
       options={options}
       value={selected}
       disabled={disabled}
@@ -56,6 +58,8 @@ export function SearchableMultiSelect<T extends string | number>({
 
   return (
     <Autocomplete
+      className="qms-searchable-select"
+      fullWidth
       multiple
       options={options}
       value={selected}

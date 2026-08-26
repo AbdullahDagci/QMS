@@ -1,28 +1,24 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.Capas;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Contracts.Capas;
 using Qms.Contracts.Common;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.Capas;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
-using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Capas;
 
-public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, UserManager<ApplicationUser> userManager) : ICapaService
+public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, IElectronicSignatureService signatures) : ICapaService
 {
     private static readonly Guid PrototypeDepartmentId = Guid.Parse("01991f70-6f40-7000-8000-000000000002");
 
@@ -162,7 +158,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         var from = capa.Status;
         var transition = request.Transition.Trim().ToLowerInvariant();
         EnsureMakerChecker(qr, request.Transition);
-        await EnsureSignatureAuthenticationAsync(request, ct);
+        if (IsApprovalTransition(request.Transition))
+            await signatures.AuthenticateAsync(request.SignaturePassword, request.SignatureMeaningAccepted, ct);
         var requiredTask = transition switch
         {
             "submit" => WorkflowTaskRoles.Initiator,
@@ -216,9 +213,16 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         if (IsApprovalTransition(transition))
         {
             var meaning = SignatureMeaning(transition);
-            var signedContent = $"Capa|{capa.Id}|{capa.Version}|{transition}|{request.Note?.Trim()}";
-            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signedContent)));
-            dbContext.ElectronicSignatures.Add(ElectronicSignature.Create(qr.Id, capa.Version, currentUser.Id, currentUser.DisplayName, meaning, now, contentHash, request.Note));
+            dbContext.ElectronicSignatures.Add(signatures.CreateInternal(
+                qr.Id,
+                "Capa",
+                capa.Id,
+                capa.Version,
+                transition,
+                meaning,
+                new { capa, actions = capa.Actions, transition, request.Note },
+                now,
+                request.Note));
         }
         await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
@@ -285,15 +289,6 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         if (owners.Count == 0) return false;
         var now = timeProvider.GetUtcNow();
         return await dbContext.Delegations.AsNoTracking().AnyAsync(x => owners.Contains(x.DelegatorUserId) && x.DelegateUserId == currentUser.Id && x.RevokedAtUtc == null && x.StartsAtUtc <= now && x.EndsAtUtc >= now && (x.Scope == "ALL" || x.Scope == "M.02"), ct);
-    }
-
-    private async Task EnsureSignatureAuthenticationAsync(TransitionCapaRequest request, CancellationToken ct)
-    {
-        if (!IsApprovalTransition(request.Transition)) return;
-        if (!request.SignatureMeaningAccepted) throw new QmsForbiddenException("Elektronik imza anlamı açıkça kabul edilmelidir.");
-        if (string.IsNullOrWhiteSpace(request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza için parola yeniden girilmelidir.");
-        var user = await userManager.FindByIdAsync(currentUser.Id.ToString());
-        if (user is null || !user.IsActive || !await userManager.CheckPasswordAsync(user, request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız.");
     }
 
     private async Task<HashSet<Guid>> UserIdsInRolesAsync(string[] roles, CancellationToken ct) => (await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id where roles.Contains(role.Name!) select link.UserId).Distinct().ToListAsync(ct)).ToHashSet();

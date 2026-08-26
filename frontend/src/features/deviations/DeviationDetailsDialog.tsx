@@ -52,6 +52,8 @@ import {
   type SelectOption,
 } from "../../components/SearchableSelect";
 import { ModalHeader } from "../../components/ModalHeader";
+import { ElectronicSignaturePanel } from "../../components/ElectronicSignaturePanel";
+import { ElectronicSignatureVerificationBadge } from "../../components/ElectronicSignatureVerificationBadge";
 import { AuditTimeline } from "../../components/AuditTimeline";
 import { RecordAssignments } from "../../components/RecordAssignments";
 import { CapaCreateDialog } from "../capas/CapaWorkspace";
@@ -830,53 +832,24 @@ export function DeviationDetailsDialog({
                         "close",
                       ].includes(item.code),
                     ) && (
-                      <Paper
-                        variant="outlined"
-                        sx={{
-                          mt: 2,
-                          p: 2,
-                          borderColor: "#d7e2df",
-                          background: "#f8fbfa",
-                        }}
-                      >
-                        <Typography sx={{ fontWeight: 800 }}>
-                          Elektronik imza doğrulaması
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ mt: 0.5 }}
-                        >
-                          Bu karar kullanıcı kimliğiniz, imza anlamı, kayıt
-                          sürümü ve içerik hash’i ile bağlanacaktır.
-                        </Typography>
-                        <TextField
-                          label="Parolanızı yeniden girin"
-                          type="password"
-                          autoComplete="current-password"
-                          value={signaturePassword}
-                          onChange={(event) =>
-                            setSignaturePassword(event.target.value)
-                          }
-                          fullWidth
-                          sx={{ mt: 1.5 }}
-                          helperText="Geliştirme ortamı imza parolası: Qms.Dev!2026"
-                        />
-                        <FormControlLabel
-                          sx={{ mt: 1 }}
-                          control={
-                            <Checkbox
-                              checked={signatureMeaningAccepted}
-                              onChange={(event) =>
-                                setSignatureMeaningAccepted(
-                                  event.target.checked,
-                                )
-                              }
-                            />
-                          }
-                          label="Bu kararın elektronik imza anlamını okudum ve onaylıyorum."
-                        />
-                      </Paper>
+                      <ElectronicSignaturePanel
+                        meaning={details.data.availableTransitions
+                          .filter((item) =>
+                            [
+                              "start-preliminary-review",
+                              "complete-quality-assessment",
+                              "complete-effectiveness-review",
+                              "close",
+                            ].includes(item.code),
+                          )
+                          .map((item) => item.label)
+                          .join(" / ")}
+                        password={signaturePassword}
+                        accepted={signatureMeaningAccepted}
+                        onPasswordChange={setSignaturePassword}
+                        onAcceptedChange={setSignatureMeaningAccepted}
+                        disabled={transition.isPending}
+                      />
                     )}
                   <Stack
                     direction="row"
@@ -974,22 +947,35 @@ export function DeviationDetailsDialog({
                       </Typography>
                       <Stack spacing={1}>
                         {details.data.signatures.map((signature) => (
-                          <Box key={signature.id}>
-                            <Typography
-                              variant="body2"
-                              sx={{ fontWeight: 700 }}
-                            >
-                              {signature.meaning} · {signature.signerName}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Sürüm {signature.recordVersion} ·{" "}
-                              {formatDateTime(signature.signedAtUtc)} · Hash{" "}
-                              {signature.contentHash.slice(0, 12)}…
-                            </Typography>
-                          </Box>
+                          <Stack
+                            key={signature.id}
+                            direction={{ xs: "column", sm: "row" }}
+                            sx={{
+                              justifyContent: "space-between",
+                              alignItems: { sm: "center" },
+                              gap: 1,
+                            }}
+                          >
+                            <Box>
+                              <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 700 }}
+                              >
+                                {signature.meaning} · {signature.signerName}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Sürüm {signature.recordVersion} ·{" "}
+                                {formatDateTime(signature.signedAtUtc)} · Hash{" "}
+                                {signature.contentHash.slice(0, 12)}…
+                              </Typography>
+                            </Box>
+                            <ElectronicSignatureVerificationBadge
+                              signatureId={signature.id}
+                            />
+                          </Stack>
                         ))}
                       </Stack>
                     </Paper>

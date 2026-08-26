@@ -1,23 +1,19 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.RiskManagement;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Contracts.Common;
 using Qms.Contracts.RiskManagement;
 using Qms.Domain.AuditTrail;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.RiskManagement;
 using Qms.Domain.Workflows;
-using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.Persistence;
 
 namespace Qms.Infrastructure.RiskManagement;
@@ -26,7 +22,7 @@ public sealed class RiskManagementService(
     QmsDbContext db,
     TimeProvider time,
     ICurrentUser user,
-    UserManager<ApplicationUser> users
+    IElectronicSignatureService signatures
 ) : IRiskManagementService
 {
     public async Task<RiskOptionsResponse> GetOptionsAsync(CancellationToken ct)
@@ -504,37 +500,37 @@ public sealed class RiskManagementService(
                 type = "ResidualReviewStarted";
                 break;
             case "approve":
-                await Signature(r, ct);
+                await signatures.AuthenticateAsync(r.SignaturePassword, r.SignatureMeaningAccepted, ct);
                 x.Approve(r.ExpectedVersion, now);
                 db.Add(
-                    ElectronicSignature.Create(
+                    signatures.CreateInternal(
                         x.QualityRecordId,
+                        "RiskAssessment",
+                        x.Id,
                         x.Version,
-                        user.Id,
-                        user.DisplayName,
+                        "approve",
                         "FMEA kalıntı risk kabul ve onayı",
+                        new { assessment = x, items = x.Items, r.Note },
                         now,
-                        Hash(x.Id, x.Version, "approve", r.Note),
-                        r.Note
-                    )
+                        r.Note)
                 );
                 type = "RiskAssessmentApproved";
                 break;
             case "close":
-                await Signature(r, ct);
+                await signatures.AuthenticateAsync(r.SignaturePassword, r.SignatureMeaningAccepted, ct);
                 x.Close(r.ExpectedVersion, now);
                 qr.Close(now, false);
                 db.Add(
-                    ElectronicSignature.Create(
+                    signatures.CreateInternal(
                         x.QualityRecordId,
+                        "RiskAssessment",
+                        x.Id,
                         x.Version,
-                        user.Id,
-                        user.DisplayName,
+                        "close",
                         "FMEA nihai kapanış onayı",
+                        new { assessment = x, items = x.Items, r.Note },
                         now,
-                        Hash(x.Id, x.Version, "close", r.Note),
-                        r.Note
-                    )
+                        r.Note)
                 );
                 await CompleteAll(id, now, ct);
                 type = "RiskAssessmentClosed";
@@ -685,16 +681,6 @@ public sealed class RiskManagementService(
                 );
     }
 
-    private async Task Signature(TransitionRiskRequest r, CancellationToken ct)
-    {
-        if (!r.SignatureMeaningAccepted || string.IsNullOrWhiteSpace(r.SignaturePassword))
-            throw new ArgumentException("E-imza parolası ve anlam kabulü zorunludur.");
-        var a =
-            await users.FindByIdAsync(user.Id.ToString())
-            ?? throw new QmsForbiddenException("İmzalayan bulunamadı.");
-        if (!a.IsActive || !await users.CheckPasswordAsync(a, r.SignaturePassword))
-            throw new QmsForbiddenException("E-imza parolası geçersizdir.");
-    }
 
     private async Task Lookup(string c, string code, CancellationToken ct)
     {
@@ -761,10 +747,6 @@ public sealed class RiskManagementService(
             reason
         );
 
-    private static string Hash(Guid id, long v, string op, string? note) =>
-        Convert
-            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{id:N}|{v}|{op}|{note?.Trim()}")))
-            .ToLowerInvariant();
 
     private async Task<long> Next(
         string type,

@@ -1,12 +1,10 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Application.SpecializedRecords;
 using Qms.Contracts.Common;
@@ -17,7 +15,6 @@ using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.SpecializedRecords;
 using Qms.Domain.Workflows;
-using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.Persistence;
 
 namespace Qms.Infrastructure.SpecializedRecords;
@@ -26,7 +23,7 @@ public sealed class SpecializedRecordService(
     QmsDbContext db,
     TimeProvider time,
     ICurrentUser user,
-    UserManager<ApplicationUser> users
+    IElectronicSignatureService signatures
 ) : ISpecializedRecordService
 {
     public async Task<SpecializedOptionsResponse> GetOptionsAsync(
@@ -404,20 +401,32 @@ public sealed class SpecializedRecordService(
                 eventType = "SubmittedForReview";
                 break;
             case "review":
-                await VerifySignature(r, ct);
+                await signatures.AuthenticateAsync(
+                    r.SignaturePassword,
+                    r.SignatureMeaningAccepted,
+                    ct
+                );
                 x.Review(r.ExpectedVersion, now);
                 db.Add(Signature(x, Meaning(module, "review"), now, r.Note, "review"));
                 await Complete(id, WorkflowTaskRoles.SpecializedReviewer, now, ct);
                 eventType = "Reviewed";
                 break;
             case "approve":
-                await VerifySignature(r, ct);
+                await signatures.AuthenticateAsync(
+                    r.SignaturePassword,
+                    r.SignatureMeaningAccepted,
+                    ct
+                );
                 x.Approve(r.ExpectedVersion, now);
                 db.Add(Signature(x, Meaning(module, "approve"), now, r.Note, "approve"));
                 eventType = "Approved";
                 break;
             case "close":
-                await VerifySignature(r, ct);
+                await signatures.AuthenticateAsync(
+                    r.SignaturePassword,
+                    r.SignatureMeaningAccepted,
+                    ct
+                );
                 x.Close(r.ExpectedVersion, now);
                 qr.Close(now, false);
                 db.Add(Signature(x, Meaning(module, "close"), now, r.Note, "close"));
@@ -425,7 +434,11 @@ public sealed class SpecializedRecordService(
                 eventType = "Closed";
                 break;
             case "cancel":
-                await VerifySignature(r, ct);
+                await signatures.AuthenticateAsync(
+                    r.SignaturePassword,
+                    r.SignatureMeaningAccepted,
+                    ct
+                );
                 x.Cancel(r.ExpectedVersion, now);
                 qr.Close(now, false);
                 db.Add(Signature(x, "Kontrollü kayıt iptal onayı", now, r.Note, "cancel"));
@@ -594,17 +607,6 @@ public sealed class SpecializedRecordService(
             t.Complete(now);
     }
 
-    private async Task VerifySignature(TransitionSpecializedRecordRequest r, CancellationToken ct)
-    {
-        if (!r.SignatureMeaningAccepted || string.IsNullOrWhiteSpace(r.SignaturePassword))
-            throw new ArgumentException("E-imza parolası ve anlam kabulü zorunludur.");
-        var account =
-            await users.FindByIdAsync(user.Id.ToString())
-            ?? throw new QmsForbiddenException("İmzalayan bulunamadı.");
-        if (!account.IsActive || !await users.CheckPasswordAsync(account, r.SignaturePassword))
-            throw new QmsForbiddenException("E-imza parolası geçersizdir.");
-    }
-
     private static IReadOnlyList<SpecializedTransitionResponse> Transitions(
         SpecializedRecordStatus s
     ) =>
@@ -649,14 +651,20 @@ public sealed class SpecializedRecordService(
         string? note,
         string operation
     ) =>
-        ElectronicSignature.Create(
+        signatures.CreateInternal(
             x.QualityRecordId,
+            "SpecializedRecord",
+            x.Id,
             x.Version,
-            user.Id,
-            user.DisplayName,
+            operation,
             meaning,
+            new
+            {
+                record = x,
+                structuredData = x.StructuredDataJson,
+                note,
+            },
             now,
-            Hash(x.Id, x.Version, operation, note),
             note
         );
 
@@ -689,15 +697,6 @@ public sealed class SpecializedRecordService(
             JsonSerializer.SerializeToDocument(payload),
             reason
         );
-
-    private static string Hash(Guid id, long version, string operation, string? note) =>
-        Convert
-            .ToHexString(
-                SHA256.HashData(
-                    Encoding.UTF8.GetBytes($"{id:N}|{version}|{operation}|{note?.Trim()}")
-                )
-            )
-            .ToLowerInvariant();
 
     private async Task<long> Next(
         string type,

@@ -55,6 +55,8 @@ import {
   type CreateCapaInput,
 } from "../../api/capas";
 import { ModalHeader } from "../../components/ModalHeader";
+import { ElectronicSignaturePanel } from "../../components/ElectronicSignaturePanel";
+import { ElectronicSignatureVerificationBadge } from "../../components/ElectronicSignatureVerificationBadge";
 import { RecordActionMenu } from "../../components/RecordActionMenu";
 import {
   SearchableSelect,
@@ -838,32 +840,26 @@ function CapaDetailsDialog({
                       />
                     )}
                     {needsSignature && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography sx={{ fontWeight: 800 }}>
-                          Elektronik imza doğrulaması
-                        </Typography>
-                        <TextField
-                          label="Parolanızı yeniden girin"
-                          type="password"
-                          autoComplete="current-password"
-                          value={signaturePassword}
-                          onChange={(e) => setSignaturePassword(e.target.value)}
-                          fullWidth
-                          sx={{ mt: 1.5 }}
-                        />
-                        <FormControlLabel
-                          sx={{ mt: 1 }}
-                          control={
-                            <Checkbox
-                              checked={signatureMeaningAccepted}
-                              onChange={(e) =>
-                                setSignatureMeaningAccepted(e.target.checked)
-                              }
-                            />
-                          }
-                          label="Bu kararın elektronik imza anlamını okudum ve onaylıyorum."
-                        />
-                      </Box>
+                      <ElectronicSignaturePanel
+                        meaning={details.data.availableTransitions
+                          .filter((item) =>
+                            [
+                              "submit-scope",
+                              "approve-scope",
+                              "approve-root-cause",
+                              "approve-plan",
+                              "record-effectiveness",
+                              "approve-closure",
+                            ].includes(item.code),
+                          )
+                          .map((item) => item.label)
+                          .join(" / ")}
+                        password={signaturePassword}
+                        accepted={signatureMeaningAccepted}
+                        onPasswordChange={setSignaturePassword}
+                        onAcceptedChange={setSignatureMeaningAccepted}
+                        disabled={transition.isPending}
+                      />
                     )}
                     <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
                       {details.data.availableTransitions.map((x) => (
@@ -936,7 +932,16 @@ function CapaDetailsDialog({
                     </Typography>
                   ) : (
                     details.data.signatures.map((s) => (
-                      <Alert key={s.id} severity="success" sx={{ mb: 1 }}>
+                      <Alert
+                        key={s.id}
+                        severity="success"
+                        sx={{ mb: 1 }}
+                        action={
+                          <ElectronicSignatureVerificationBadge
+                            signatureId={s.id}
+                          />
+                        }
+                      >
                         {s.signerName} · {s.meaning} · {dateTime(s.signedAtUtc)}{" "}
                         · v{s.recordVersion}
                       </Alert>

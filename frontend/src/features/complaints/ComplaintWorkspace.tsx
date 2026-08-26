@@ -694,14 +694,9 @@ function ComplaintRow({
       <TableCell>
         <Stack direction="row" spacing={0.7} sx={{ flexWrap: "wrap" }}>
           <Chip
+            className={`semantic-risk-badge risk-${item.severity.toLowerCase()}`}
             size="small"
-            color={
-              item.severity === "Critical"
-                ? "error"
-                : item.severity === "Major"
-                  ? "warning"
-                  : "default"
-            }
+            color={item.severity === "Minor" ? "success" : "error"}
             label={severityLabels[item.severity]}
           />
           {item.suspectedAdverseEvent && (
@@ -1086,13 +1081,8 @@ function ComplaintDetailsDialog({
                 </Button>
               )}
               <Chip
-                color={
-                  query.data.record.severity === "Critical"
-                    ? "error"
-                    : query.data.record.severity === "Major"
-                      ? "warning"
-                      : "default"
-                }
+                className={`semantic-risk-badge risk-${query.data.record.severity.toLowerCase()}`}
+                color={query.data.record.severity === "Minor" ? "success" : "error"}
                 label={severityLabels[query.data.record.severity]}
               />
               <Chip

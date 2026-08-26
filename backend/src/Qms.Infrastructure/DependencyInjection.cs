@@ -9,6 +9,7 @@ using Qms.Application.Complaints;
 using Qms.Application.Dashboard;
 using Qms.Application.Deviations;
 using Qms.Application.Documents;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.ExternalAudits;
 using Qms.Application.InternalAudits;
 using Qms.Application.MasterBatchRecords;
@@ -24,6 +25,7 @@ using Qms.Infrastructure.Complaints;
 using Qms.Infrastructure.Dashboard;
 using Qms.Infrastructure.Deviations;
 using Qms.Infrastructure.Documents;
+using Qms.Infrastructure.ElectronicSignatures;
 using Qms.Infrastructure.ExternalAudits;
 using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.InternalAudits;
@@ -58,6 +60,7 @@ public static class DependencyInjection
         );
 
         services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IElectronicSignatureService, ElectronicSignatureService>();
         services.AddScoped<IDeviationService, DeviationService>();
         services.AddScoped<IDeviationFinalReportService, DeviationFinalReportService>();
         services.AddScoped<ICapaService, CapaService>();

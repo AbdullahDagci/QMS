@@ -1,28 +1,24 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.ChangeControls;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Contracts.ChangeControls;
 using Qms.Contracts.Common;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.ChangeControls;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
-using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.ChangeControls;
 
-public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, UserManager<ApplicationUser> userManager) : IChangeControlService
+public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, IElectronicSignatureService signatures) : IChangeControlService
 {
     private static readonly HashSet<string> LookupCategories = ["ChangeType", "RiskLevel", "RegulatoryImpact", "ActionCategory"];
 
@@ -131,7 +127,8 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
         var change = await dbContext.ChangeControls.Include(x => x.Assessments).Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (change is null) return null;
         var qr = await dbContext.QualityRecords.SingleAsync(x => x.Id == change.QualityRecordId, ct); var now = timeProvider.GetUtcNow(); var from = change.Status; var transition = request.Transition.Trim().ToLowerInvariant();
         EnsureMakerChecker(qr, transition);
-        await EnsureSignatureAuthenticationAsync(request, ct);
+        if (IsApprovalTransition(request.Transition))
+            await signatures.AuthenticateAsync(request.SignaturePassword, request.SignatureMeaningAccepted, ct);
         var requiredTask = transition switch { "submit" => WorkflowTaskRoles.Initiator, "approve-preliminary" => WorkflowTaskRoles.ProcessAuthority, "submit-board" => WorkflowTaskRoles.Evaluator, "approve-board" => WorkflowTaskRoles.ChangeBoard, "approve-plan" or "commission" or "close" => WorkflowTaskRoles.Approver, "request-commissioning" or "verify-implementation" or "rollback" => WorkflowTaskRoles.Evaluator, _ => null };
         if (requiredTask is not null) await EnsureAssignedActorAsync(id, requiredTask, ct);
         await using var tx = await dbContext.Database.BeginTransactionAsync(ct); change.Transition(request.ExpectedVersion, transition, request.Note, request.Successful, now);
@@ -148,7 +145,7 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
             case "close": await CompleteTasksAsync(id, WorkflowTaskRoles.Approver, now, ct); qr.Close(now, false); break;
             case "rollback": await CompleteTasksAsync(id, WorkflowTaskRoles.Evaluator, now, ct); break;
         }
-        if (IsApprovalTransition(transition)) dbContext.ElectronicSignatures.Add(ElectronicSignature.Create(qr.Id, change.Version, currentUser.Id, currentUser.DisplayName, SignatureMeaning(transition), now, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { change.Id, change.Version, transition, request.Note, request.Successful })))), request.Note));
+        if (IsApprovalTransition(transition)) dbContext.ElectronicSignatures.Add(signatures.CreateInternal(qr.Id, "ChangeControl", change.Id, change.Version, transition, SignatureMeaning(transition), new { change, assessments = change.Assessments, actions = change.Actions, transition, request.Note, request.Successful }, now, request.Note));
         dbContext.AuditEvents.Add(Audit(change, "ChangeControlStatusChanged", now, new { from = from.ToString(), to = change.Status.ToString(), transition }, request.Note)); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
 
@@ -213,7 +210,6 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
         }
         return roles.OrderBy(x => x).ToList();
     }
-    private async Task EnsureSignatureAuthenticationAsync(TransitionChangeControlRequest request, CancellationToken ct) { if (!IsApprovalTransition(request.Transition)) return; if (!request.SignatureMeaningAccepted || string.IsNullOrWhiteSpace(request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza için parola ve anlam kabulü zorunludur."); var user = await userManager.FindByIdAsync(currentUser.Id.ToString()); if (user is null || !user.IsActive || !await userManager.CheckPasswordAsync(user, request.SignaturePassword)) throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız."); }
     private async Task<HashSet<Guid>> UserIdsInRolesAsync(string[] roles, CancellationToken ct) => (await (from link in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on link.RoleId equals role.Id where roles.Contains(role.Name!) select link.UserId).Distinct().ToListAsync(ct)).ToHashSet();
     private async Task<(Guid Id, string Name)> ActiveUserAsync(Guid id, CancellationToken ct) { var user = await dbContext.Users.AsNoTracking().Where(x => x.Id == id && x.IsActive).Select(x => new { x.Id, x.DisplayName }).SingleOrDefaultAsync(ct) ?? throw new ArgumentException("Seçilen kullanıcı etkin değil veya bulunamadı."); return (user.Id, user.DisplayName); }
     private async Task EnsureActiveLookupAsync(string category, string code, CancellationToken ct) { if (!await dbContext.ChangeLookupDefinitions.AsNoTracking().AnyAsync(x => x.Category == category && x.Code == code.Trim() && x.IsActive, ct)) throw new ArgumentException($"Seçilen {category} tanımı etkin lookup kayıtlarında bulunamadı."); }

@@ -4,7 +4,9 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qms.Application.Administration;
+using Qms.Application.Security;
 using Qms.Contracts.Administration;
+using Qms.Contracts.Security;
 
 namespace Qms.IntegrationTests;
 
@@ -25,6 +27,20 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
 
         Assert.Contains("deviation.create", permissions);
         Assert.DoesNotContain("capa.plan", permissions);
+    }
+
+    [Fact]
+    public async Task QuickProfiles_CoverEverySystemRoleAndExposeDepartment()
+    {
+        using var client = factory.CreateClient();
+
+        var profiles = await client.GetFromJsonAsync<List<DevelopmentProfileResponse>>("/api/v1/auth/quick-profiles");
+
+        Assert.NotNull(profiles);
+        var assignedRoles = profiles.SelectMany(profile => profile.Roles).Distinct().ToArray();
+        Assert.All(QmsRoles.All, role => Assert.Contains(role, assignedRoles));
+        Assert.Contains(profiles, profile => profile.Key == "learner" && profile.DepartmentName == "Üretim" && profile.Roles.Contains(QmsRoles.Learner));
+        Assert.Contains(profiles, profile => profile.Key == "trainer" && profile.DepartmentName == "Kalite Güvence" && profile.Roles.Contains(QmsRoles.Trainer));
     }
 
     [Fact]

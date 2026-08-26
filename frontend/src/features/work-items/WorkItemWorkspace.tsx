@@ -4,7 +4,6 @@ import { useSearchParams } from "react-router";
 import {
   AddRounded,
   AssignmentTurnedInRounded,
-  CloseRounded,
   DownloadRounded,
   HistoryRounded,
   SettingsRounded,
@@ -20,7 +19,6 @@ import {
   DialogActions,
   DialogContent,
   FormControlLabel,
-  IconButton,
   MenuItem,
   Paper,
   Snackbar,
@@ -35,6 +33,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { ModalHeader } from "../../components/ModalHeader";
 import {
   createWorkItem,
   createWorkItemLookup,
@@ -629,22 +628,11 @@ export function WorkItemWorkspace() {
 
 function Header({ title, close }: { title: string; close: () => void }) {
   return (
-    <Box
-      className="modal-header"
-      sx={{
-        p: 2.5,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
+    <ModalHeader onClose={close}>
       <Typography variant="h5" sx={{ fontWeight: 800 }}>
         {title}
       </Typography>
-      <IconButton onClick={close}>
-        <CloseRounded />
-      </IconButton>
-    </Box>
+    </ModalHeader>
   );
 }
 function Details({

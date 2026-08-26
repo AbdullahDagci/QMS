@@ -30,7 +30,7 @@ public static class SecurityEndpoints
             return user is null ? Results.NotFound() : await CreateSession(user, db, clock, ct);
         }).AllowAnonymous().WithTags("Security");
         endpoints.MapGet("/api/v1/auth/quick-profiles", (IWebHostEnvironment environment) => environment.IsDevelopment()
-            ? Results.Ok(DevelopmentProfiles.All.Select(x => new DevelopmentProfileResponse(x.Key, x.DisplayName, x.Roles)))
+            ? Results.Ok(DevelopmentProfiles.All.Select(x => new DevelopmentProfileResponse(x.Key, x.DisplayName, x.DepartmentName, x.Roles)))
             : Results.NotFound()).AllowAnonymous().WithTags("Security");
 
         endpoints.MapPost("/api/v1/auth/logout", async (HttpRequest request, QmsDbContext db, TimeProvider clock, CancellationToken ct) =>
@@ -62,6 +62,7 @@ public static class SecurityEndpoints
                     DevelopmentProfiles.All.Select(profile => new DevelopmentProfileResponse(
                         profile.Key,
                         profile.DisplayName,
+                        profile.DepartmentName,
                         profile.Roles)).ToList()));
             })
             .RequireAuthorization()

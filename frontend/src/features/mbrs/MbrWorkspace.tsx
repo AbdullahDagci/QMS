@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import {
   AddRounded,
-  CloseRounded,
   DescriptionRounded,
   HistoryRounded,
   TaskAltRounded,
@@ -18,7 +17,6 @@ import {
   DialogActions,
   DialogContent,
   FormControlLabel,
-  IconButton,
   MenuItem,
   Paper,
   Snackbar,
@@ -33,6 +31,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { ModalHeader } from "../../components/ModalHeader";
 import {
   addMbrStep,
   createMbr,
@@ -703,22 +702,11 @@ function Details({
 }
 function Head({ title, close }: { title: string; close: () => void }) {
   return (
-    <Box
-      className="modal-header"
-      sx={{
-        p: 2,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
+    <ModalHeader onClose={close}>
       <Typography variant="h5" sx={{ fontWeight: 800 }}>
         {title}
       </Typography>
-      <IconButton onClick={close}>
-        <CloseRounded />
-      </IconButton>
-    </Box>
+    </ModalHeader>
   );
 }
 function Select({

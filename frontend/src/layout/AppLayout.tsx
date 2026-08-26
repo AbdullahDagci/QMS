@@ -156,6 +156,7 @@ function roleLabel(role?: string) {
     DeviationReporter: 'Sapma bildiren', Investigator: 'Araştırmacı', ActionOwner: 'Aksiyon sorumlusu', QualityViewer: 'İzleyici',
     QualifiedPerson: 'Mesul Müdür', DepartmentManager: 'Bölüm yöneticisi', RegulatoryAffairs: 'Ruhsat sorumlusu',
     DocumentController: 'Doküman kontrol', TrainingCoordinator: 'Eğitim koordinatörü',
+    Learner: 'Eğitim katılımcısı', Trainer: 'Eğitmen',
   }
   return role ? labels[role] ?? role : 'Rol atanmadı'
 }

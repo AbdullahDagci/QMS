@@ -501,11 +501,7 @@ function DeviationRow({
 }) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const riskColor =
-    deviation.classification === "Critical"
-      ? "error"
-      : deviation.classification === "Major"
-        ? "warning"
-        : "success";
+    deviation.classification === "Minor" ? "success" : "error";
 
   return (
     <TableRow hover>
@@ -530,6 +526,7 @@ function DeviationRow({
       </TableCell>
       <TableCell>
         <Chip
+          className={`semantic-risk-badge risk-${deviation.classification.toLowerCase()}`}
           size="small"
           color={riskColor}
           label={`${classificationLabels[deviation.classification]} · ${deviation.riskScore}`}

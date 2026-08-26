@@ -1633,7 +1633,13 @@ function FindingCard({
     onSuccess: update,
   });
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderLeft: `5px solid ${f.classification === "Critical" ? "#a61e42" : f.classification === "Major" ? "#f1416c" : "#50cd89"}`,
+      }}
+    >
       <Stack
         direction="row"
         spacing={1}
@@ -1643,14 +1649,9 @@ function FindingCard({
           {f.number} · {f.title}
         </Typography>
         <Chip
+          className={`semantic-risk-badge risk-${f.classification.toLowerCase()}`}
           size="small"
-          color={
-            f.classification === "Critical"
-              ? "error"
-              : f.classification === "Major"
-                ? "warning"
-                : "default"
-          }
+          color={f.classification === "Minor" ? "success" : "error"}
           label={classificationLabels[f.classification]}
         />
         <Chip size="small" label={f.status} />

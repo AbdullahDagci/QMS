@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Qms.Domain.ElectronicSignatures;
 
 public sealed class ElectronicSignature
@@ -23,6 +25,54 @@ public sealed class ElectronicSignature
     public string? Comment { get; private set; }
 
     public string ContentHash { get; private set; } = string.Empty;
+
+    public string ProviderType { get; private set; } = "Legacy";
+
+    public string SignatureMethod { get; private set; } = "LegacyApplicationSignature";
+
+    public string AggregateType { get; private set; } = string.Empty;
+
+    public Guid AggregateId { get; private set; }
+
+    public string Operation { get; private set; } = string.Empty;
+
+    public JsonDocument SignedSnapshot { get; private set; } = JsonDocument.Parse("{}");
+
+    public static ElectronicSignature CreateInternal(
+        Guid qualityRecordId,
+        long recordVersion,
+        Guid signerUserId,
+        string signerDisplayName,
+        string aggregateType,
+        Guid aggregateId,
+        string operation,
+        string meaning,
+        DateTimeOffset signedAtUtc,
+        JsonDocument signedSnapshot,
+        string contentHash,
+        string? comment = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(aggregateType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        ArgumentNullException.ThrowIfNull(signedSnapshot);
+
+        var signature = Create(
+            qualityRecordId,
+            recordVersion,
+            signerUserId,
+            signerDisplayName,
+            meaning,
+            signedAtUtc,
+            contentHash,
+            comment);
+        signature.ProviderType = "Internal";
+        signature.SignatureMethod = "PasswordReauthentication";
+        signature.AggregateType = aggregateType.Trim();
+        signature.AggregateId = aggregateId;
+        signature.Operation = operation.Trim().ToLowerInvariant();
+        signature.SignedSnapshot = signedSnapshot;
+        return signature;
+    }
 
     public static ElectronicSignature Create(
         Guid qualityRecordId,

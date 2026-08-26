@@ -689,6 +689,8 @@ public sealed class AccessAdministrationService(
                 "Eğitim Koordinatörü",
                 "Pozisyon bazlı eğitim atamalarını yönetir."
             ),
+            new(QmsRoles.Learner, "Eğitim Katılımcısı", "Kendisine atanan eğitimleri tamamlar ve okuma kanıtı verir."),
+            new(QmsRoles.Trainer, "Eğitmen", "Eğitim değerlendirmesini ve yeterlilik kararını kaydeder."),
         ];
 
     private static void Ensure(IdentityResult result, string message)

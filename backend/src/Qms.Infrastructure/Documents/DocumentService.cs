@@ -1,29 +1,25 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Qms.Application.Documents;
+using Qms.Application.ElectronicSignatures;
 using Qms.Application.Security;
 using Qms.Contracts.Common;
 using Qms.Contracts.Documents;
 using Qms.Domain.AuditTrail;
 using Qms.Domain.Documents;
-using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Trainings;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
-using Qms.Infrastructure.Identity;
 
 namespace Qms.Infrastructure.Documents;
 
-public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurrentUser user, UserManager<ApplicationUser> userManager) : IDocumentService
+public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurrentUser user, IElectronicSignatureService signatures) : IDocumentService
 {
     private static readonly HashSet<string> LookupCategories = ["DocumentType", "Confidentiality"];
 
@@ -120,14 +116,14 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
     public async Task<ControlledDocumentDetailsResponse?> StartRevisionAsync(Guid id, StartDocumentRevisionRequest r, CancellationToken ct) { await EnsureActorAsync(id, WorkflowTaskRoles.DocumentAuthor, ct); var reviews = await ResolveReviewInputsAsync(r.ReviewDepartmentIds ?? [], user.Id, ct); var trainings = await ResolveTrainingInputsAsync(r.TrainingPositionIds ?? [], ct); return await Mutate(id, ct, (d, now) => { d.StartRevision(r.ExpectedVersion, r.Major, r.ChangeSummary, reviews, trainings, now); db.DocumentRevisions.Add(d.CurrentRevision); db.DocumentReviews.AddRange(d.Reviews.Where(x => x.RevisionId == d.CurrentRevisionId)); db.DocumentTrainingRequirements.AddRange(d.TrainingRequirements.Where(x => x.RevisionId == d.CurrentRevisionId)); return ("DocumentRevisionStarted", (object)new { r.Major, d.CurrentRevision.VersionLabel }, r.ChangeSummary); }); }
     public async Task<ControlledDocumentDetailsResponse?> IssueCopyAsync(Guid id, IssueControlledCopyRequest r, CancellationToken ct) { await EnsureActorAsync(id, WorkflowTaskRoles.DocumentCoordinator, ct); return await Mutate(id, ct, (d, now) => { var copy = d.IssueCopy(r.ExpectedVersion, r.CopyNumber, r.Recipient, r.Purpose, r.DueBackAtUtc?.ToUniversalTime(), now); db.ControlledDocumentCopies.Add(copy); return ("ControlledCopyIssued", (object)new { copy.Id, copy.CopyNumber, copy.Recipient }, r.Purpose); }); }
     public async Task<ControlledDocumentDetailsResponse?> CloseCopyAsync(Guid id, Guid copyId, CloseControlledCopyRequest r, CancellationToken ct) { await EnsureActorAsync(id, WorkflowTaskRoles.DocumentCoordinator, ct); return await Mutate(id, ct, (d, now) => { d.CloseCopy(r.ExpectedVersion, copyId, r.Destroyed, now); return (r.Destroyed ? "ControlledCopyDestroyed" : "ControlledCopyReturned", (object)new { copyId }, (string?)null); }); }
-    public async Task<ControlledDocumentDetailsResponse?> AcknowledgeReadAsync(Guid id, AcknowledgeDocumentReadRequest r, CancellationToken ct) { await EnsureSignatureAuthenticationAsync(r.SignaturePassword, r.SignatureMeaningAccepted, ct); var result = await Mutate(id, ct, (d, now) => { var receipt = d.Acknowledge(r.ExpectedVersion, user.Id, user.DisplayName, r.SignatureMeaning, now); db.DocumentReadReceipts.Add(receipt); db.ElectronicSignatures.Add(ElectronicSignature.Create(d.QualityRecordId, d.Version, user.Id, user.DisplayName, r.SignatureMeaning, now, SignatureHash(d.Id, d.Version, "read-acknowledgement", r.SignatureMeaning), r.SignatureMeaning)); return ("DocumentReadAcknowledged", (object)new { receipt.Id, receipt.RevisionId }, r.SignatureMeaning); }); return result; }
+    public async Task<ControlledDocumentDetailsResponse?> AcknowledgeReadAsync(Guid id, AcknowledgeDocumentReadRequest r, CancellationToken ct) { await signatures.AuthenticateAsync(r.SignaturePassword, r.SignatureMeaningAccepted, ct); var result = await Mutate(id, ct, (d, now) => { var receipt = d.Acknowledge(r.ExpectedVersion, user.Id, user.DisplayName, r.SignatureMeaning, now); db.DocumentReadReceipts.Add(receipt); db.ElectronicSignatures.Add(signatures.CreateInternal(d.QualityRecordId, "Document", d.Id, d.Version, "read-acknowledgement", r.SignatureMeaning, new { document = d, revision = d.CurrentRevision, receipt }, now, r.SignatureMeaning)); return ("DocumentReadAcknowledged", (object)new { receipt.Id, receipt.RevisionId }, r.SignatureMeaning); }); return result; }
 
     public async Task<ControlledDocumentDetailsResponse?> TransitionAsync(Guid id, TransitionDocumentRequest request, CancellationToken ct)
     {
         var document = await LoadAsync(id, ct); if (document is null) return null; var qr = await db.QualityRecords.SingleAsync(x => x.Id == document.QualityRecordId, ct); var transition = request.Transition.Trim().ToLowerInvariant(); var now = clock.GetUtcNow(); var from = document.Status;
         var requiredTask = TransitionTaskRole(transition); if (requiredTask is not null) await EnsureActorAsync(id, requiredTask, ct);
         if (transition is "approve" or "release" or "withdraw" or "archive" && qr.CreatedByUserId == user.Id) throw new QmsForbiddenException("Görev ayrılığı kuralı: Dokümanı hazırlayan kullanıcı aynı dokümanın onay veya yürürlük kararını veremez.");
-        if (IsSignatureTransition(transition)) await EnsureSignatureAuthenticationAsync(request.SignaturePassword, request.SignatureMeaningAccepted, ct);
+        if (IsSignatureTransition(transition)) await signatures.AuthenticateAsync(request.SignaturePassword, request.SignatureMeaningAccepted, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct); document.Transition(request.ExpectedVersion, transition, request.Note, request.RequiresRevision, now);
         switch (transition)
         {
@@ -139,7 +135,7 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
             case "request-revision": await CompleteTasksAsync(id, WorkflowTaskRoles.DocumentCoordinator, now, ct); await AssignUserAsync(id, WorkflowTaskRoles.DocumentAuthor, document.OwnerUserId ?? await ResolveLegacyOwnerAsync(document.Owner, ct), now, document.PlannedEffectiveDateUtc, ct); break;
             case "archive": qr.Close(now, false); break;
         }
-        if (IsSignatureTransition(transition)) db.ElectronicSignatures.Add(ElectronicSignature.Create(qr.Id, document.Version, user.Id, user.DisplayName, SignatureMeaning(transition), now, SignatureHash(document.Id, document.Version, transition, request.Note), request.Note));
+        if (IsSignatureTransition(transition)) db.ElectronicSignatures.Add(signatures.CreateInternal(qr.Id, "Document", document.Id, document.Version, transition, SignatureMeaning(transition), new { document, revisions = document.Revisions, reviews = document.Reviews, trainingRequirements = document.TrainingRequirements, copies = document.Copies, transition, request.Note }, now, request.Note));
         db.AuditEvents.Add(Audit(document, "DocumentStatusChanged", now, new { from = from.ToString(), to = document.Status.ToString(), transition }, request.Note)); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
 
@@ -211,8 +207,6 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
     private async Task<Guid> ResolveLegacyReviewUserAsync(DocumentReview review, Guid excluded, CancellationToken ct) { var departmentId = review.DepartmentId ?? await db.Departments.AsNoTracking().Where(x => x.IsActive && x.Name == review.Department).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct) ?? throw new InvalidOperationException($"{review.Department} bölümü organizasyonda bulunamadı."); return (await ResolveDepartmentReviewerAsync(departmentId, excluded, ct) ?? throw new InvalidOperationException($"{review.Department} için inceleyici bulunamadı.")).Id; }
     private async Task<Guid> ResolveLegacyOwnerAsync(string snapshot, CancellationToken ct) { var id = await db.Users.AsNoTracking().Where(x => x.IsActive && x.DisplayName == snapshot).Select(x => x.Id).FirstOrDefaultAsync(ct); if (id != Guid.Empty) return id; id = await (from link in db.UserRoles.AsNoTracking() join role in db.Roles.AsNoTracking() on link.RoleId equals role.Id join target in db.Users.AsNoTracking() on link.UserId equals target.Id where role.Name == QmsRoles.DocumentController && target.IsActive orderby target.DisplayName select target.Id).FirstOrDefaultAsync(ct); return id == Guid.Empty ? throw new InvalidOperationException("Eski doküman için atanabilir sahip bulunamadı.") : id; }
     private async Task EnsureActiveLookupAsync(string category, string code, CancellationToken ct) { if (!await db.DocumentLookupDefinitions.AsNoTracking().AnyAsync(x => x.Category == category && x.Code == code.Trim() && x.IsActive, ct)) throw new ArgumentException($"Seçilen {category} tanımı etkin lookup kayıtlarında bulunamadı."); }
-    private async Task EnsureSignatureAuthenticationAsync(string? password, bool accepted, CancellationToken ct) { if (!accepted || string.IsNullOrWhiteSpace(password)) throw new QmsForbiddenException("Elektronik imza için parola ve imza anlamı kabulü zorunludur."); var target = await userManager.FindByIdAsync(user.Id.ToString()); if (target is null || !target.IsActive || !await userManager.CheckPasswordAsync(target, password)) throw new QmsForbiddenException("Elektronik imza kimlik doğrulaması başarısız."); }
-    private static string SignatureHash(Guid id, long version, string action, string? note) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id, version, action, note }))));
     private static bool IsSignatureTransition(string transition) => transition is "approve" or "release" or "complete-periodic-review" or "withdraw" or "archive";
     private static string SignatureMeaning(string transition) => transition switch { "approve" => "Doküman sürüm onayı", "release" => "Dokümanı yürürlüğe alma onayı", "complete-periodic-review" => "Periyodik gözden geçirme kararı", "withdraw" => "Dokümanı yürürlükten kaldırma kararı", "archive" => "Doküman arşivleme onayı", _ => "Doküman kararı" };
     private static string? TransitionTaskRole(string transition) => transition switch { "start-writing" or "submit-review" => WorkflowTaskRoles.DocumentAuthor, "submit-approval" or "release" or "request-revision" or "start-periodic-review" or "complete-periodic-review" or "withdraw" or "archive" => WorkflowTaskRoles.DocumentCoordinator, "approve" => WorkflowTaskRoles.DocumentApprover, _ => null };

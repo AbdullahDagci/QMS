@@ -38,6 +38,8 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
                 Position.Create("REG_AFFAIRS", "Ruhsatlandırma Uzmanı"),
                 Position.Create("DOC_CONTROLLER", "Doküman Kontrol Sorumlusu"),
                 Position.Create("TRAINING_COORDINATOR", "Eğitim Koordinatörü"),
+                Position.Create("EMPLOYEE", "Üretim Operatörü"),
+                Position.Create("TRAINER", "Yetkinlik Eğitmeni"),
                 Position.Create("SYSTEM_ADMIN", "Sistem Yöneticisi", true));
         }
         else
@@ -45,6 +47,8 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
             if (!await dbContext.Positions.AnyAsync(item => item.Code == "REG_AFFAIRS", cancellationToken)) dbContext.Positions.Add(Position.Create("REG_AFFAIRS", "Ruhsatlandırma Uzmanı"));
             if (!await dbContext.Positions.AnyAsync(item => item.Code == "DOC_CONTROLLER", cancellationToken)) dbContext.Positions.Add(Position.Create("DOC_CONTROLLER", "Doküman Kontrol Sorumlusu"));
             if (!await dbContext.Positions.AnyAsync(item => item.Code == "TRAINING_COORDINATOR", cancellationToken)) dbContext.Positions.Add(Position.Create("TRAINING_COORDINATOR", "Eğitim Koordinatörü"));
+            if (!await dbContext.Positions.AnyAsync(item => item.Code == "EMPLOYEE", cancellationToken)) dbContext.Positions.Add(Position.Create("EMPLOYEE", "Üretim Operatörü"));
+            if (!await dbContext.Positions.AnyAsync(item => item.Code == "TRAINER", cancellationToken)) dbContext.Positions.Add(Position.Create("TRAINER", "Yetkinlik Eğitmeni"));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -55,7 +59,6 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
             var stored = await userManager.Users.SingleOrDefaultAsync(user => user.ProfileKey == profile.Key, cancellationToken);
             if (stored is null)
             {
-                var departmentCode = profile.Key switch { "reporter" or "action-owner" or "manager" => "URT", "regulatory" => "RUH", "admin" => "SYS", "validation-reviewer" => "VAL", "engineering-reviewer" => "MUH", "it-reviewer" => "BT", _ => "KG" };
                 stored = new ApplicationUser
                 {
                     Id = profile.UserId,
@@ -64,7 +67,7 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
                     EmailConfirmed = true,
                     DisplayName = profile.DisplayName,
                     ProfileKey = profile.Key,
-                    DepartmentId = departments[departmentCode].Id,
+                    DepartmentId = departments[profile.DepartmentCode].Id,
                     IsActive = true
                 };
                 Ensure(await userManager.CreateAsync(stored), $"{profile.DisplayName} kullanıcısı oluşturulamadı");
@@ -87,7 +90,8 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
                     "quality" or "quality-reviewer" => "QA_SPECIALIST", "approver" => "QA_APPROVER", "qualified-person" => "QP",
                     "manager" => "DEPT_MANAGER", "investigator" => "INVESTIGATOR", "action-owner" => "ACTION_OWNER",
                     "reporter" => "REPORTER", "regulatory" => "REG_AFFAIRS", "document-controller" => "DOC_CONTROLLER",
-                    "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", "validation-reviewer" or "engineering-reviewer" or "it-reviewer" => "DEPT_MANAGER", _ => "QA_SPECIALIST"
+                    "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", "validation-reviewer" or "engineering-reviewer" or "it-reviewer" => "DEPT_MANAGER",
+                    "learner" => "EMPLOYEE", "trainer" => "TRAINER", _ => "QA_SPECIALIST"
                 };
                 dbContext.UserPositions.Add(UserPosition.Create(stored.Id, positions[positionCode].Id, stored.DepartmentId!.Value, true, DateTimeOffset.UtcNow));
             }
