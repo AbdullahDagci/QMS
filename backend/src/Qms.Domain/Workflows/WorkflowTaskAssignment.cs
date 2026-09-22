@@ -19,6 +19,8 @@ public sealed class WorkflowTaskAssignment
     public DateTimeOffset AssignedAtUtc { get; private set; }
     public DateTimeOffset? DueAtUtc { get; private set; }
     public DateTimeOffset? CompletedAtUtc { get; private set; }
+    public DateTimeOffset? LastEscalatedAtUtc { get; private set; }
+    public int EscalationLevel { get; private set; }
 
     public static WorkflowTaskAssignment Create(string aggregateType, Guid aggregateId, string taskRole, Guid assignedUserId, Guid? assignedDepartmentId, DateTimeOffset assignedAtUtc, DateTimeOffset? dueAtUtc = null, Guid? delegatedFromUserId = null, string? assignedUserNameSnapshot = null, string? assignedDepartmentNameSnapshot = null)
     {
@@ -28,4 +30,12 @@ public sealed class WorkflowTaskAssignment
 
     public void Complete(DateTimeOffset now) { Status = WorkflowTaskStatus.Completed; CompletedAtUtc = now; }
     public void Cancel() => Status = WorkflowTaskStatus.Cancelled;
+    public int Escalate(DateTimeOffset now)
+    {
+        if (Status != WorkflowTaskStatus.Active || DueAtUtc is null || DueAtUtc > now)
+            throw new InvalidOperationException("Yalnız gecikmiş aktif görevler eskale edilebilir.");
+        EscalationLevel++;
+        LastEscalatedAtUtc = now;
+        return EscalationLevel;
+    }
 }

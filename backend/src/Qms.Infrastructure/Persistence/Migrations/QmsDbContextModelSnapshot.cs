@@ -188,12 +188,27 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("IntegrityHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("IntegrityMac")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<DateTimeOffset>("OccurredAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<JsonDocument>("Payload")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("PreviousIntegrityHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(2000)
@@ -1706,6 +1721,279 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.ToTable("training_requirement", "document");
                 });
 
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CurrentPublishedVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("LatestVersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CurrentPublishedVersionId");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "Category");
+
+                    b.ToTable("form_definition", "forms");
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormOutputTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<JsonDocument>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FormVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TemplateType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("TemplateVersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormVersionId")
+                        .IsUnique();
+
+                    b.ToTable("output_template", "forms");
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<JsonDocument>("Data")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("FormCodeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("FormDefinitionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FormNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("FormVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("FormVersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OutputTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("FormVersionId");
+
+                    b.HasIndex("OutputTemplateId");
+
+                    b.HasIndex("QualityRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("FormDefinitionId", "Status");
+
+                    b.ToTable("form_record", "forms");
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChangeSummary")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EngineSchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("FormDefinitionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("PublishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublishedByDisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("PublishedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<JsonDocument>("Schema")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("WorkflowType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormDefinitionId", "Status");
+
+                    b.HasIndex("FormDefinitionId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("form_version", "forms");
+                });
+
             modelBuilder.Entity("Qms.Domain.ElectronicSignatures.ElectronicSignature", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1725,6 +2013,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(2000)");
 
                     b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("IntegrityMac")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -2137,6 +2430,79 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("ExternalAuditId", "AccessedAtUtc");
 
                     b.ToTable("package_access", "external_audit");
+                });
+
+            modelBuilder.Entity("Qms.Domain.Files.ManagedFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("IntegrityMac")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset>("RetainUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentHash");
+
+                    b.HasIndex("StoragePath")
+                        .IsUnique();
+
+                    b.HasIndex("AggregateType", "AggregateId", "UploadedAtUtc");
+
+                    b.ToTable("managed_file", "files");
                 });
 
             modelBuilder.Entity("Qms.Domain.Identity.UserSession", b =>
@@ -2906,6 +3272,36 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.ToTable("position", "organization");
                 });
 
+            modelBuilder.Entity("Qms.Domain.Organization.RecordAccessGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("GrantedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("QualityRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignmentId")
+                        .IsUnique();
+
+                    b.HasIndex("QualityRecordId");
+
+                    b.HasIndex("UserId", "QualityRecordId");
+
+                    b.ToTable("record_access_grant", "identity");
+                });
+
             modelBuilder.Entity("Qms.Domain.Organization.UserPosition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3321,6 +3717,11 @@ namespace Qms.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ReviewerUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("SchemaVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("ScopeCode")
                         .IsRequired()
@@ -4292,6 +4693,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DueAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("EscalationLevel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastEscalatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(24)
@@ -4307,6 +4714,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
                     b.HasIndex("AggregateType", "AggregateId", "Status");
 
                     b.HasIndex("AssignedUserId", "Status", "DueAtUtc");
+
+                    b.HasIndex("Status", "DueAtUtc", "LastEscalatedAtUtc");
 
                     b.ToTable("task_assignment", "workflow");
                 });
@@ -4410,6 +4819,12 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
 
+                    b.Property<Guid?>("LockId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("NextAttemptAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -4434,6 +4849,8 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status", "LockedUntilUtc");
 
                     b.HasIndex("Status", "NextAttemptAtUtc");
 
@@ -4775,6 +5192,65 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormDefinition", b =>
+                {
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentPublishedVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithOne()
+                        .HasForeignKey("Qms.Domain.ElectronicForms.ElectronicFormDefinition", "QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormOutputTemplate", b =>
+                {
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormVersion", null)
+                        .WithMany()
+                        .HasForeignKey("FormVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormRecord", b =>
+                {
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("FormDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormVersion", null)
+                        .WithMany()
+                        .HasForeignKey("FormVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormOutputTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("OutputTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithOne()
+                        .HasForeignKey("Qms.Domain.ElectronicForms.ElectronicFormRecord", "QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Qms.Domain.ElectronicForms.ElectronicFormVersion", b =>
+                {
+                    b.HasOne("Qms.Domain.ElectronicForms.ElectronicFormDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("FormDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Qms.Domain.ElectronicSignatures.ElectronicSignature", b =>
                 {
                     b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
@@ -4944,6 +5420,21 @@ namespace Qms.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ParentDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Qms.Domain.Organization.RecordAccessGrant", b =>
+                {
+                    b.HasOne("Qms.Domain.Workflows.WorkflowTaskAssignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Qms.Domain.QualityRecords.QualityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("QualityRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Qms.Domain.Organization.UserPosition", b =>

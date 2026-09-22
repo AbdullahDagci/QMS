@@ -13,6 +13,7 @@ using Qms.Domain.AuditTrail;
 using Qms.Domain.ElectronicSignatures;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
+using Qms.Infrastructure.Security;
 using Qms.Domain.SpecializedRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
@@ -169,7 +170,7 @@ public sealed class SpecializedRecordService(
             throw new ArgumentException("Sayfa geçersizdir.");
         var q =
             from x in db.SpecializedRecords.AsNoTracking()
-            join qr in db.QualityRecords.AsNoTracking() on x.QualityRecordId equals qr.Id
+            join qr in db.VisibleQualityRecords(user) on x.QualityRecordId equals qr.Id
             where x.ModuleCode == module
             select new { Record = x, qr.RecordNumber };
         foreach (var f in r.Filters ?? [])
@@ -227,8 +228,9 @@ public sealed class SpecializedRecordService(
         if (x is null)
             return null;
         var qr = await db
-            .QualityRecords.AsNoTracking()
-            .SingleAsync(q => q.Id == x.QualityRecordId, ct);
+            .VisibleQualityRecords(user)
+            .SingleOrDefaultAsync(q => q.Id == x.QualityRecordId, ct);
+        if (qr is null) return null;
         var events = await db
             .AuditEvents.AsNoTracking()
             .Where(e => e.AggregateType == "SpecializedRecord" && e.AggregateId == id)
@@ -269,7 +271,8 @@ public sealed class SpecializedRecordService(
             x.Status.ToString(),
             x.CreatedAtUtc,
             x.UpdatedAtUtc,
-            x.Version
+            x.Version,
+            x.SchemaVersion
         );
         return new(
             record,
@@ -384,7 +387,8 @@ public sealed class SpecializedRecordService(
     {
         ValidateModule(module);
         var x = await db.SpecializedRecords.SingleOrDefaultAsync(
-            x => x.Id == id && x.ModuleCode == module,
+            x => x.Id == id && x.ModuleCode == module
+                && db.VisibleQualityRecords(user).Any(record => record.Id == x.QualityRecordId),
             ct
         );
         if (x is null)
@@ -693,7 +697,7 @@ public sealed class SpecializedRecordService(
             user.Id,
             user.DisplayName,
             now,
-            Guid.CreateVersion7().ToString(),
+            Qms.Infrastructure.Integrity.AuditCorrelation.Current,
             JsonSerializer.SerializeToDocument(payload),
             reason
         );

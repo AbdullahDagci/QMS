@@ -1,32 +1,36 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { AppLayout } from "./layout/AppLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
-import { DeviationWorkspace } from "./features/deviations/DeviationWorkspace";
-import { CapaWorkspace } from "./features/capas/CapaWorkspace";
-import { AccessManagementPage } from "./pages/AccessManagementPage";
-import { ChangeControlWorkspace } from "./features/change-controls/ChangeControlWorkspace";
-import { DocumentWorkspace } from "./features/documents/DocumentWorkspace";
-import { TrainingWorkspace } from "./features/trainings/TrainingWorkspace";
-import { ComplaintWorkspace } from "./features/complaints/ComplaintWorkspace";
-import { InternalAuditWorkspace } from "./features/internal-audits/InternalAuditWorkspace";
-import { ExternalAuditWorkspace } from "./features/external-audits/ExternalAuditWorkspace";
-import { SupplierAuditWorkspace } from "./features/supplier-audits/SupplierAuditWorkspace";
-import { WorkItemWorkspace } from "./features/work-items/WorkItemWorkspace";
-import { RiskWorkspace } from "./features/risks/RiskWorkspace";
-import { MbrWorkspace } from "./features/mbrs/MbrWorkspace";
-import { SpecializedWorkspace } from "./features/specialized/SpecializedWorkspace";
 import "./App.css";
 import { useAuth } from "./security/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
+
+const DeviationWorkspace = lazy(() => import("./features/deviations/DeviationWorkspace").then((m) => ({ default: m.DeviationWorkspace })));
+const CapaWorkspace = lazy(() => import("./features/capas/CapaWorkspace").then((m) => ({ default: m.CapaWorkspace })));
+const AccessManagementPage = lazy(() => import("./pages/AccessManagementPage").then((m) => ({ default: m.AccessManagementPage })));
+const ChangeControlWorkspace = lazy(() => import("./features/change-controls/ChangeControlWorkspace").then((m) => ({ default: m.ChangeControlWorkspace })));
+const DocumentWorkspace = lazy(() => import("./features/documents/DocumentWorkspace").then((m) => ({ default: m.DocumentWorkspace })));
+const TrainingWorkspace = lazy(() => import("./features/trainings/TrainingWorkspace").then((m) => ({ default: m.TrainingWorkspace })));
+const ComplaintWorkspace = lazy(() => import("./features/complaints/ComplaintWorkspace").then((m) => ({ default: m.ComplaintWorkspace })));
+const InternalAuditWorkspace = lazy(() => import("./features/internal-audits/InternalAuditWorkspace").then((m) => ({ default: m.InternalAuditWorkspace })));
+const ExternalAuditWorkspace = lazy(() => import("./features/external-audits/ExternalAuditWorkspace").then((m) => ({ default: m.ExternalAuditWorkspace })));
+const SupplierAuditWorkspace = lazy(() => import("./features/supplier-audits/SupplierAuditWorkspace").then((m) => ({ default: m.SupplierAuditWorkspace })));
+const WorkItemWorkspace = lazy(() => import("./features/work-items/WorkItemWorkspace").then((m) => ({ default: m.WorkItemWorkspace })));
+const RiskWorkspace = lazy(() => import("./features/risks/RiskWorkspace").then((m) => ({ default: m.RiskWorkspace })));
+const MbrWorkspace = lazy(() => import("./features/mbrs/MbrWorkspace").then((m) => ({ default: m.MbrWorkspace })));
+const SpecializedWorkspace = lazy(() => import("./features/specialized/SpecializedWorkspace").then((m) => ({ default: m.SpecializedWorkspace })));
+const ElectronicFormsWorkspace = lazy(() => import("./features/electronic-forms/ElectronicFormsWorkspace").then((m) => ({ default: m.ElectronicFormsWorkspace })));
 
 function App() {
   const { authenticated } = useAuth();
   if (!authenticated) return <LoginPage />;
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
+      <Suspense fallback={<div className="route-loading" role="progressbar" aria-label="Modül yükleniyor" />}>
+        <Routes>
+          <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="modules/deviations" element={<DeviationWorkspace />} />
           <Route path="modules/m02" element={<CapaWorkspace />} />
@@ -40,6 +44,7 @@ function App() {
           <Route path="modules/m10" element={<WorkItemWorkspace />} />
           <Route path="modules/m11" element={<RiskWorkspace />} />
           <Route path="modules/m12" element={<MbrWorkspace />} />
+          <Route path="forms" element={<ElectronicFormsWorkspace />} />
           <Route
             path="modules/m13"
             element={<SpecializedWorkspace module="m13" />}
@@ -65,8 +70,9 @@ function App() {
             element={<ModulePlaceholderPage />}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+          </Route>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

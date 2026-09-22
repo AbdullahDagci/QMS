@@ -730,6 +730,10 @@ function CreateAuditDialog({
     enabled: open,
     retry: false,
   });
+  const set = <K extends keyof CreateInternalAuditInput>(
+    k: K,
+    v: CreateInternalAuditInput[K],
+  ) => setForm((x) => ({ ...x, [k]: v }));
   useEffect(() => {
     const first = optionsQuery.data?.auditTypes[0];
     if (first && !form.auditType) set("auditType", first.code);
@@ -745,10 +749,6 @@ function CreateAuditDialog({
       onCreated(d);
     },
   });
-  const set = <K extends keyof CreateInternalAuditInput>(
-    k: K,
-    v: CreateInternalAuditInput[K],
-  ) => setForm((x) => ({ ...x, [k]: v }));
   const parsed = questions
     .split("\n")
     .map((x) => x.trim())

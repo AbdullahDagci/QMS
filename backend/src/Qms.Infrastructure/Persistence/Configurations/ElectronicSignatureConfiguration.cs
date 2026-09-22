@@ -16,6 +16,7 @@ public sealed class ElectronicSignatureConfiguration : IEntityTypeConfiguration<
         builder.Property(signature => signature.Meaning).HasMaxLength(128).IsRequired();
         builder.Property(signature => signature.Comment).HasMaxLength(2000);
         builder.Property(signature => signature.ContentHash).HasMaxLength(128).IsRequired();
+        builder.Property(signature => signature.IntegrityMac).HasMaxLength(128).IsRequired();
         builder.Property(signature => signature.ProviderType).HasMaxLength(32).IsRequired();
         builder.Property(signature => signature.SignatureMethod).HasMaxLength(64).IsRequired();
         builder.Property(signature => signature.AggregateType).HasMaxLength(128).IsRequired();

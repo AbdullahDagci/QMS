@@ -1,5 +1,4 @@
 import { qmsFetch } from "./http";
-import { QMS_SESSION_KEY } from "./http";
 
 export interface UserProfileOption {
   key: string;
@@ -17,16 +16,13 @@ export interface CurrentUser {
 }
 
 export interface LoginResult {
-  token: string;
   expiresAtUtc: string;
   profileKey: string;
   displayName: string;
 }
 async function loginJson(response: Response) {
   if (!response.ok) throw new Error("E-posta veya parola hatalı.");
-  const result = (await response.json()) as LoginResult;
-  window.localStorage.setItem(QMS_SESSION_KEY, result.token);
-  return result;
+  return response.json() as Promise<LoginResult>;
 }
 export const login = (email: string, password: string) =>
   qmsFetch("/api/v1/auth/login", {
@@ -49,8 +45,23 @@ export const logout = async () => {
   await qmsFetch("/api/v1/auth/logout", { method: "POST" }).catch(
     () => undefined,
   );
-  window.localStorage.removeItem(QMS_SESSION_KEY);
 };
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const response = await qmsFetch("/api/v1/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (response.ok) return;
+  const body = await response.json().catch(() => null) as {
+    errors?: Record<string, string[]>;
+    detail?: string;
+    title?: string;
+  } | null;
+  const validation = body?.errors ? Object.values(body.errors).flat().join(" ") : null;
+  throw new Error(validation || body?.detail || body?.title || "Parola değiştirilemedi.");
+}
 
 export async function getCurrentUser(
   signal?: AbortSignal,

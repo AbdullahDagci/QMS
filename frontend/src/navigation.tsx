@@ -7,6 +7,7 @@ import {
   ChatBubbleOutlineRounded,
   DashboardRounded,
   DescriptionRounded,
+  DynamicFormRounded,
   FactCheckRounded,
   HealthAndSafetyRounded,
   LocalShippingRounded,
@@ -51,6 +52,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     title: 'Doküman ve yetkinlik',
     items: [
+      { code: 'E-FORM', title: 'Elektronik Formlar', path: '/forms', icon: DynamicFormRounded, active: true },
       { code: 'M.04', title: 'Doküman Yönetimi', path: '/modules/m04', icon: DescriptionRounded, active: true },
       { code: 'M.05', title: 'Eğitim Yönetimi', path: '/modules/m05', icon: SchoolRounded, active: true },
       { code: 'M.12', title: 'MBR Yönetimi', path: '/modules/m12', icon: MenuBookRounded },

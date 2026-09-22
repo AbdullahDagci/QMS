@@ -39,7 +39,7 @@ public sealed class SpecializedFinalReportService(IConfiguration configuration)
         var name = $"{d.Record.RecordNumber}-nihai.pdf";
         var path = Path.Combine(dir, name);
         var hp = path + ".sha256";
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFont();
             var bytes = Build(d);
@@ -61,7 +61,7 @@ public sealed class SpecializedFinalReportService(IConfiguration configuration)
             )
         )
             throw new InvalidOperationException("Nihai PDF bütünlük doğrulamasını geçemedi.");
-        return new(content, name, actual);
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actual, reportIsNew); return new(content, name, actual);
     }
 
     private static byte[] Build(SpecializedDetailsResponse d)

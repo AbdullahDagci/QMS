@@ -38,7 +38,7 @@ public sealed class MbrFinalReportService(IConfiguration configuration) : IMbrFi
         var name = $"{details.Record.RecordNumber}-MBR-{details.Record.DocumentVersion}-nihai.pdf";
         var path = Path.Combine(dir, name);
         var hashPath = path + ".sha256";
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFont();
             var bytes = Build(details);
@@ -60,7 +60,7 @@ public sealed class MbrFinalReportService(IConfiguration configuration) : IMbrFi
             )
         )
             throw new InvalidOperationException("Nihai M.12 PDF bütünlük doğrulamasını geçemedi.");
-        return new(content, name, actual);
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actual, reportIsNew); return new(content, name, actual);
     }
 
     private static byte[] Build(MbrDetailsResponse d)

@@ -30,6 +30,22 @@ public sealed class AuditEvent
 
     public JsonDocument Payload { get; private set; } = JsonDocument.Parse("{}");
 
+    public string PreviousIntegrityHash { get; private set; } = string.Empty;
+
+    public string IntegrityHash { get; private set; } = string.Empty;
+
+    public string IntegrityMac { get; private set; } = string.Empty;
+
+    public void Seal(string previousHash, string integrityHash, string integrityMac)
+    {
+        if (!string.IsNullOrEmpty(IntegrityHash))
+            throw new InvalidOperationException("Denetim izi kaydı yeniden mühürlenemez.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(integrityHash);
+        PreviousIntegrityHash = previousHash;
+        IntegrityHash = integrityHash;
+        IntegrityMac = integrityMac;
+    }
+
     public static AuditEvent Create(
         string aggregateType,
         Guid aggregateId,

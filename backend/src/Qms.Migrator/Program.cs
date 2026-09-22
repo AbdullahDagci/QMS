@@ -12,6 +12,10 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     Args = args,
     ContentRootPath = AppContext.BaseDirectory
 });
+Qms.Infrastructure.Configuration.SecretConfigurationLoader.Apply(builder.Configuration);
+if (!builder.Environment.IsDevelopment()
+    && string.IsNullOrWhiteSpace(builder.Configuration["RecordIntegrity:HmacKey"]))
+    throw new InvalidOperationException("RecordIntegrity:HmacKey production ortamında zorunludur.");
 builder.Services.AddQmsInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ICurrentUser, MigratorCurrentUser>();
 
@@ -23,7 +27,16 @@ var dbContext = scope.ServiceProvider.GetRequiredService<QmsDbContext>();
 
 logger.LogInformation("Applying QMS database migrations");
 await dbContext.Database.MigrateAsync();
-await scope.ServiceProvider.GetRequiredService<QmsIdentitySeeder>().SeedAsync();
+await scope.ServiceProvider.GetRequiredService<Qms.Infrastructure.Integrity.QmsIntegrityBackfill>()
+    .RunAsync();
+await scope.ServiceProvider.GetRequiredService<Qms.Infrastructure.Integrity.FinalReportIntegrityBackfill>()
+    .RunAsync();
+await scope.ServiceProvider.GetRequiredService<Qms.Infrastructure.Security.RecordAccessBackfill>()
+    .RunAsync();
+await scope.ServiceProvider.GetRequiredService<QmsIdentitySeeder>()
+    .SeedAsync(builder.Environment.IsDevelopment());
+await scope.ServiceProvider.GetRequiredService<DatabasePrivilegeHardening>()
+    .ApplyAsync();
 logger.LogInformation("QMS database migrations completed");
 
 file sealed class MigratorCurrentUser : ICurrentUser

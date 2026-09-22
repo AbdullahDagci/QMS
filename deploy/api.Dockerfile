@@ -14,10 +14,13 @@ RUN dotnet publish backend/src/Qms.Api/Qms.Api.csproj --configuration Release --
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10 AS final
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends curl fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/qms-files \
+    && chown -R $APP_UID:$APP_UID /data/qms-files
 WORKDIR /app
 COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Qms.Api.dll"]

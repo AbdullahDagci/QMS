@@ -15,4 +15,5 @@ RUN dotnet publish backend/src/Qms.Migrator/Qms.Migrator.csproj --configuration 
 FROM mcr.microsoft.com/dotnet/runtime:10.0.10 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Qms.Migrator.dll"]

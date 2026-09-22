@@ -14,17 +14,22 @@ public sealed class DevelopmentAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    QmsDbContext dbContext)
+    QmsDbContext dbContext,
+    IWebHostEnvironment environment)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    public const string SchemeName = "QmsDevelopment";
+    public const string SchemeName = "QmsSession";
+    public const string SessionCookieName = "__Host-qms-session";
+    public const string DevelopmentSessionCookieName = "qms-session-dev";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var token = Request.Headers.Authorization.FirstOrDefault();
-        if (token?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true)
+        var authorization = Request.Headers.Authorization.FirstOrDefault();
+        var raw = authorization?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true
+            ? authorization[7..].Trim()
+            : Request.Cookies[SessionCookieName] ?? Request.Cookies[DevelopmentSessionCookieName];
+        if (!string.IsNullOrWhiteSpace(raw))
         {
-            var raw = token[7..].Trim();
             var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
             var now = DateTimeOffset.UtcNow;
             var sessionUser = await (from session in dbContext.UserSessions.AsNoTracking()
@@ -35,6 +40,10 @@ public sealed class DevelopmentAuthenticationHandler(
             var sessionRoles = await (from ur in dbContext.UserRoles.AsNoTracking() join role in dbContext.Roles.AsNoTracking() on ur.RoleId equals role.Id where ur.UserId == sessionUser.Id select role.Name!).ToListAsync(Context.RequestAborted);
             return Success(sessionUser, sessionUser.ProfileKey ?? sessionUser.Id.ToString(), sessionRoles);
         }
+
+        if (!environment.IsDevelopment())
+            return AuthenticateResult.NoResult();
+
         var profileKey = Request.Headers["X-QMS-Profile"].FirstOrDefault()?.Trim().ToLowerInvariant() ?? "quality";
         var fallback = DevelopmentProfiles.Resolve(profileKey);
         ApplicationUser? stored = null;

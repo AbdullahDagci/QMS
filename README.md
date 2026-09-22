@@ -4,7 +4,7 @@ Tek kurum için geliştirilen, modüler monolit mimarili elektronik kalite yöne
 
 ## Durum
 
-Bu repository teknik iskelet ile M.01–M.09 çalışan kalite zincirini içerir:
+Bu repository teknik iskelet ile M.01–M.16 çalışan kalite zincirini içerir:
 
 - .NET 10 ASP.NET Core API.
 - .NET background worker.
@@ -31,19 +31,23 @@ Bu repository teknik iskelet ile M.01–M.09 çalışan kalite zincirini içerir
 - M.08 → M.02/M.04 zinciri; majör-kritik dış denetim bulgusundan otomatik DÖF, açık DÖF ile bulgu kapanış engeli ve yürürlükteki dokümanın alıcı/amaç/manifest kaydıyla dışa aktarılması.
 - M.09 Tedarikçi Denetimi; kritik/performance/açık bulgu girdilerinden risk ve frekans hesabı, sürümü kilitlenen soru listesi, saha kanıtı, güvenli tek kullanımlık tedarikçi cevabı ve kapsam bazlı nitelendirme sonucu.
 - M.09 → M.02/M.16 zinciri; majör-kritik bulgudan otomatik DÖF, kritik bulguda kapsamı otomatik askıya alma, açık DÖF ile kapanış engeli ve gelecekteki M.16 ara değerlendirme/yeniden nitelendirme tetikleyicisi.
+- Kodsuz elektronik form motoru; sürümlü alan şeması, koşullu alanlar, maker-checker yayımlama, kontrollü doldurma/onay ve şablona sabitlenmiş nihai PDF.
 - React sapma iş listesi, risk formu ve kontrollü gönderim işlemi.
 - Global server-side pagination, whitelist sıralama, tip bazlı gelişmiş filtre ve aranabilir select standardı.
 - React 19 + TypeScript + Vite 8 + MUI arayüz kabuğu.
 - PostgreSQL 18, API, worker, migrator ve web için Docker dosyaları.
 - Domain, application, architecture, integration ve frontend test başlangıçları.
 
-Bu sürüm üretime hazır değildir. Gerçek e-imza yeniden doğrulaması, genel workflow yürütme, append-only veritabanı yetkileri ve validasyon paketi sonraki sertleştirme adımlarıdır.
+Bu sürüm production adayı olarak sertleştirilmiştir: gerçek parola ile e-imza yeniden doğrulaması, HMAC zincirli append-only audit/e-imza/kanıt kayıtları, outbox worker, satır kapsamı, TLS proxy ve dosya taraması mevcuttur. Canlı kullanım öncesinde kuruma özgü URS/OQ/PQ validasyonu ve kalite onayı yine zorunludur.
 
 ## Belgeler
 
 - [eQMS sistem analizi](./EQMS_SISTEM_ANALIZI.md)
 - [Teknik mimari ve proje planı](./TEKNIK_MIMARI_VE_PROJE_PLANI.md)
 - [Mimari karar kayıtları](./docs/adr/)
+- [Production işletim ve geri dönüş](./docs/PRODUCTION_OPERATIONS.md)
+- [Validasyon planı](./docs/VALIDATION_PLAN.md)
+- [Elektronik form motoru yol haritası](./docs/ELECTRONIC_FORM_ROADMAP.md)
 
 ## Gereksinimler
 
@@ -53,7 +57,7 @@ Bu sürüm üretime hazır değildir. Gerçek e-imza yeniden doğrulaması, gene
 
 ## Hızlı başlangıç — Docker
 
-Ortam dosyasını oluşturun ve paylaşılan ortamlarda parolayı değiştirin:
+Ortam dosyasını oluşturun; secret ve TLS dosyalarının mutlak yollarını tanımlayın:
 
 ```bash
 cp .env.example .env
@@ -77,9 +81,9 @@ Uygulamayı başlatın:
 docker compose -f deploy/docker-compose.yml up --build -d qms-api qms-worker qms-web
 ```
 
-Arayüz: `http://localhost:8080`  
-Liveness: `http://localhost:8080/health/live`  
-Readiness: `http://localhost:8080/health/ready`
+Arayüz: `https://localhost:8443`
+Liveness: `https://localhost:8443/health/live`
+Readiness: `https://localhost:8443/health/ready`
 
 ## Yerel geliştirme
 
@@ -173,6 +177,12 @@ npm run build
 - `POST /api/v1/supplier-audits/{id}/invitations`: ikinci tenant oluşturmadan süreli, tek kullanımlık ve özeti saklanan tedarikçi cevap daveti üretir.
 - `POST /api/v1/supplier-audit-invitations/respond`: geçerli tek kullanımlık token ile tedarikçi cevap ve kanıtını kabul eder.
 - `POST /api/v1/supplier-audits/{id}/result`: kapsam bazlı onay/koşul/askı/ret ve yeniden nitelendirme kararını gerekçesiyle kaydeder.
+- `GET|POST /api/v1/electronic-forms/definitions`: form kataloğunu listeler veya kodsuz tasarım için ilk sürümü oluşturur.
+- `PUT /api/v1/electronic-forms/definitions/{id}/draft`: alan şeması ve parametrik PDF ayarlarını sürüm kontrollü kaydeder.
+- `POST /api/v1/electronic-forms/definitions/{id}/submit-review|publish|versions`: inceleme, e-imzalı yayımlama ve yeni kontrollü sürüm akışını yürütür.
+- `GET|POST /api/v1/electronic-forms/records`: görünür elektronik kayıtları listeler veya yayımdaki form sürümünden kayıt başlatır.
+- `PUT|POST /api/v1/electronic-forms/records/{id}/draft|submit|approve`: taslak, doğrulama ve e-imzalı kapatma akışını yürütür.
+- `GET /api/v1/electronic-forms/records/{id}/final-report`: kayda sabitlenmiş çıktı sürümünden bütünlük korumalı nihai PDF üretir.
 - `GET /health/live`: uygulama process sağlığı.
 - `GET /health/ready`: PostgreSQL dahil hazır olma kontrolü.
 - `GET /openapi/v1.json`: yalnız development ortamında OpenAPI belgesi.
@@ -210,6 +220,7 @@ docs/adr                        Mimari karar kayıtları
 - `external_audit`: dış denetim, kontrollü doküman talepleri, erişim/dışa aktarım günlüğü ve resmi bulgular.
 - `audit`: denetim olayları.
 - `integration`: outbox mesajları.
+- `forms`: form tanımı, değiştirilemez form/çıktı sürümleri ve sürüme sabitlenmiş elektronik kayıtlar.
 
 Yeni migrasyon:
 

@@ -26,6 +26,7 @@ public sealed class ElectronicSignatureTests
             signedAt,
             snapshot,
             new string('a', 64),
+            new string('c', 44),
             "Kanıtlar doğrulandı");
 
         Assert.Equal("Internal", signature.ProviderType);
@@ -55,6 +56,7 @@ public sealed class ElectronicSignatureTests
             "DÖF plan onayı",
             DateTimeOffset.UtcNow,
             snapshot,
-            new string('b', 64)));
+            new string('b', 64),
+            new string('c', 44)));
     }
 }

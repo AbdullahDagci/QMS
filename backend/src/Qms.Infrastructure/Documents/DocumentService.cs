@@ -14,6 +14,7 @@ using Qms.Domain.Documents;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Trainings;
+using Qms.Infrastructure.Security;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
 
@@ -43,14 +44,14 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
         var code = request.Code.Trim();
         if (await db.DocumentLookupDefinitions.AnyAsync(x => x.Category == category && x.Code == code, ct)) throw new InvalidOperationException("Aynı kategori ve kodla bir lookup zaten mevcut.");
         var now = clock.GetUtcNow(); var item = DocumentLookupDefinition.Create(category, code, request.Name, request.SortOrder, now); db.DocumentLookupDefinitions.Add(item);
-        db.AuditEvents.Add(AuditEvent.Create("DocumentLookupDefinition", item.Id, 1, "DocumentLookupCreated", user.Id, user.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder })));
+        db.AuditEvents.Add(AuditEvent.Create("DocumentLookupDefinition", item.Id, 1, "DocumentLookupCreated", user.Id, user.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder })));
         await db.SaveChangesAsync(ct); return new(item.Id, item.Category, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
 
     public async Task<DocumentLookupDefinitionResponse?> UpdateLookupDefinitionAsync(Guid id, UpdateDocumentLookupDefinitionRequest request, CancellationToken ct)
     {
         var item = await db.DocumentLookupDefinitions.SingleOrDefaultAsync(x => x.Id == id, ct); if (item is null) return null; var now = clock.GetUtcNow(); item.Update(request.Name, request.SortOrder, request.IsActive, now);
-        db.AuditEvents.Add(AuditEvent.Create("DocumentLookupDefinition", item.Id, 1, "DocumentLookupUpdated", user.Id, user.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder, item.IsActive })));
+        db.AuditEvents.Add(AuditEvent.Create("DocumentLookupDefinition", item.Id, 1, "DocumentLookupUpdated", user.Id, user.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder, item.IsActive })));
         await db.SaveChangesAsync(ct); return new(item.Id, item.Category, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
 
@@ -58,13 +59,18 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
     {
         if (request.Page < 1 || request.PageSize is not (10 or 25 or 50 or 100)) throw new ArgumentException("Sayfa ve sayfa boyutu geçersizdir.");
         var query = from document in db.ControlledDocuments.AsNoTracking()
-                    join record in db.QualityRecords.AsNoTracking() on document.QualityRecordId equals record.Id
+                    join record in db.VisibleQualityRecords(user) on document.QualityRecordId equals record.Id
                     join revision in db.DocumentRevisions.AsNoTracking() on document.CurrentRevisionId equals revision.Id
                     join source in db.ChangeControls.AsNoTracking() on document.SourceChangeControlId equals source.Id into sources
                     from source in sources.DefaultIfEmpty()
-                    join sourceRecord in db.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords
+                    join sourceRecord in db.VisibleQualityRecords(user) on source.QualityRecordId equals sourceRecord.Id into sourceRecords
                     from sourceRecord in sourceRecords.DefaultIfEmpty()
                     select new DocumentRow { Document = document, Revision = revision, RecordNumber = record.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber };
+        if (!CanViewAllConfidentialDocuments())
+            query = query.Where(x => x.Document.Confidentiality != "Confidential"
+                || x.Document.OwnerUserId == user.Id
+                || db.RecordAccessGrants.Any(grant => grant.QualityRecordId == x.Document.QualityRecordId
+                    && grant.UserId == user.Id));
         foreach (var filter in request.Filters ?? []) query = ApplyFilter(query, filter);
         var total = await query.LongCountAsync(ct); query = ApplySort(query, request.SortBy, request.SortDirection);
         var items = await query.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).Select(x => new ControlledDocumentListItemResponse(
@@ -77,11 +83,15 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
 
     public async Task<ControlledDocumentDetailsResponse?> GetDetailsAsync(Guid id, CancellationToken ct)
     {
+        var canViewAllConfidentialDocuments = CanViewAllConfidentialDocuments();
         var item = await (from document in db.ControlledDocuments.AsNoTracking().Include(x => x.Revisions).Include(x => x.Reviews).Include(x => x.TrainingRequirements).Include(x => x.Copies).Include(x => x.ReadReceipts)
-                          join qr in db.QualityRecords.AsNoTracking() on document.QualityRecordId equals qr.Id
+                          join qr in db.VisibleQualityRecords(user) on document.QualityRecordId equals qr.Id
                           join source in db.ChangeControls.AsNoTracking() on document.SourceChangeControlId equals source.Id into sources from source in sources.DefaultIfEmpty()
-                          join sourceRecord in db.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords from sourceRecord in sourceRecords.DefaultIfEmpty()
-                          where document.Id == id select new { Document = document, RecordNumber = qr.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber }).SingleOrDefaultAsync(ct);
+                          join sourceRecord in db.VisibleQualityRecords(user) on source.QualityRecordId equals sourceRecord.Id into sourceRecords from sourceRecord in sourceRecords.DefaultIfEmpty()
+                          where document.Id == id && (canViewAllConfidentialDocuments
+                            || document.Confidentiality != "Confidential" || document.OwnerUserId == user.Id
+                            || db.RecordAccessGrants.Any(grant => grant.QualityRecordId == document.QualityRecordId && grant.UserId == user.Id))
+                          select new { Document = document, RecordNumber = qr.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber }).SingleOrDefaultAsync(ct);
         if (item is null) return null;
         var d = item.Document; var current = d.Revisions.Single(x => x.Id == d.CurrentRevisionId);
         var auditEvents = await db.AuditEvents.AsNoTracking().Where(x => x.AggregateType == "Document" && x.AggregateId == id).OrderByDescending(x => x.OccurredAtUtc).ToListAsync(ct);
@@ -98,7 +108,9 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
 
     public async Task<ControlledDocumentDetailsResponse> CreateAsync(CreateControlledDocumentRequest request, CancellationToken ct)
     {
-        if (request.SourceChangeControlId is Guid source && !await db.ChangeControls.AnyAsync(x => x.Id == source, ct)) throw new ArgumentException("Kaynak M.03 değişiklik kontrolü bulunamadı.");
+        if (request.SourceChangeControlId is Guid source && !await db.ChangeControls.AnyAsync(x => x.Id == source
+                && db.VisibleQualityRecords(user).Any(record => record.Id == x.QualityRecordId), ct))
+            throw new ArgumentException("Kaynak M.03 değişiklik kontrolü bulunamadı.");
         if (await db.ControlledDocuments.AnyAsync(x => x.DocumentCode == request.DocumentCode.Trim(), ct)) throw new ArgumentException("Doküman kodu daha önce kullanılmış.");
         var now = clock.GetUtcNow(); await using var tx = await db.Database.BeginTransactionAsync(ct); var sequence = await NextRecordNumberAsync(now.Year, tx, ct); var number = $"DOC-{now.Year}-{sequence:000000}";
         await EnsureActiveLookupAsync("DocumentType", request.DocumentType, ct); await EnsureActiveLookupAsync("Confidentiality", request.Confidentiality, ct);
@@ -141,8 +153,10 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
 
     private async Task<ControlledDocumentDetailsResponse?> Mutate(Guid id, CancellationToken ct, Func<ControlledDocument, DateTimeOffset, (string Type, object Payload, string? Reason)> action)
     { var document = await LoadAsync(id, ct); if (document is null) return null; var now = clock.GetUtcNow(); await using var tx = await db.Database.BeginTransactionAsync(ct); var evt = action(document, now); db.AuditEvents.Add(Audit(document, evt.Type, now, evt.Payload, evt.Reason)); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct); }
-    private Task<ControlledDocument?> LoadAsync(Guid id, CancellationToken ct) => db.ControlledDocuments.Include(x => x.Revisions).Include(x => x.Reviews).Include(x => x.TrainingRequirements).Include(x => x.Copies).Include(x => x.ReadReceipts).SingleOrDefaultAsync(x => x.Id == id, ct);
-    private AuditEvent Audit(ControlledDocument d, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("Document", d.Id, d.Version, type, user.Id, user.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(payload), reason);
+    private Task<ControlledDocument?> LoadAsync(Guid id, CancellationToken ct) => db.ControlledDocuments.Include(x => x.Revisions).Include(x => x.Reviews).Include(x => x.TrainingRequirements).Include(x => x.Copies).Include(x => x.ReadReceipts)
+        .SingleOrDefaultAsync(x => x.Id == id && db.VisibleQualityRecords(user)
+            .Any(record => record.Id == x.QualityRecordId), ct);
+    private AuditEvent Audit(ControlledDocument d, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("Document", d.Id, d.Version, type, user.Id, user.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(payload), reason);
 
     private static IReadOnlyList<DocumentTransitionResponse> Transitions(ControlledDocumentStatus s) => s switch { ControlledDocumentStatus.Draft => [new("start-writing", "Yazımı başlat", false)], ControlledDocumentStatus.Writing => [new("submit-review", "İncelemeye gönder", false)], ControlledDocumentStatus.Review => [new("submit-approval", "Onaya gönder", false)], ControlledDocumentStatus.Approval => [new("approve", "Dokümanı onayla", false)], ControlledDocumentStatus.Approved or ControlledDocumentStatus.TrainingWaiting => [new("release", "Yürürlüğe al", false)], ControlledDocumentStatus.Effective => [new("request-revision", "Revizyon talep et", false), new("start-periodic-review", "Periyodik gözden geçirme", false), new("withdraw", "Yürürlükten kaldır", true)], ControlledDocumentStatus.RevisionPending => [], ControlledDocumentStatus.PeriodicReview => [new("complete-periodic-review", "Gözden geçirmeyi tamamla", true)], ControlledDocumentStatus.Withdrawn => [new("archive", "Arşivle", false)], _ => [] };
     private static IQueryable<DocumentRow> ApplyFilter(IQueryable<DocumentRow> q, ColumnFilterRequest f) { var field = f.Field.Trim().ToLowerInvariant(); var op = f.Operator.Trim().ToLowerInvariant(); var v = f.Value?.Trim() ?? ""; return field switch { "recordnumber" => Text(q, op, v, 0), "sourcerecordnumber" => Text(q, op, v, 1), "documentcode" => Text(q, op, v, 2), "title" => Text(q, op, v, 3), "owner" => Text(q, op, v, 4), "department" => op == "equals" ? q.Where(x => x.Document.Department == v) : q.Where(x => x.Document.Department.ToLower().Contains(v.ToLower())), "documenttype" => q.Where(x => x.Document.DocumentType == v), "confidentiality" => q.Where(x => x.Document.Confidentiality == v), "status" => Enum.TryParse<ControlledDocumentStatus>(v, true, out var status) ? q.Where(x => x.Document.Status == status) : throw new ArgumentException("Doküman durumu geçersizdir."), "plannedeffectivedateutc" => Date(q, op, f.Value, f.ValueTo, 0), "nextreviewdateutc" => Date(q, op, f.Value, f.ValueTo, 1), "createdatutc" => Date(q, op, f.Value, f.ValueTo, 2), _ => throw new ArgumentException($"Filtrelenmesine izin verilmeyen kolon: {f.Field}") }; }
@@ -151,9 +165,11 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
     private static IQueryable<DocumentRow> ApplySort(IQueryable<DocumentRow> q, string f, string direction) { var d = direction.Equals("desc", StringComparison.OrdinalIgnoreCase); return f.Trim().ToLowerInvariant() switch { "recordnumber" => d ? q.OrderByDescending(x => x.RecordNumber) : q.OrderBy(x => x.RecordNumber), "documentcode" => d ? q.OrderByDescending(x => x.Document.DocumentCode) : q.OrderBy(x => x.Document.DocumentCode), "title" => d ? q.OrderByDescending(x => x.Document.Title) : q.OrderBy(x => x.Document.Title), "owner" => d ? q.OrderByDescending(x => x.Document.Owner) : q.OrderBy(x => x.Document.Owner), "status" => d ? q.OrderByDescending(x => x.Document.Status) : q.OrderBy(x => x.Document.Status), "plannedeffectivedateutc" => d ? q.OrderByDescending(x => x.Document.PlannedEffectiveDateUtc) : q.OrderBy(x => x.Document.PlannedEffectiveDateUtc), _ => d ? q.OrderByDescending(x => x.Document.CreatedAtUtc) : q.OrderBy(x => x.Document.CreatedAtUtc) }; }
     private async Task EnsureActorAsync(Guid id, string role, CancellationToken ct) { if (!await CanCurrentUserPerformAsync(id, role, ct)) throw new QmsForbiddenException("Bu doküman görevi size veya etkin bir delegasyonla size atanmamış."); }
     private void EnsureRole(params string[] roles) { if (user.IsInRole(QmsRoles.Administrator) || roles.Any(user.IsInRole)) return; throw new QmsForbiddenException("Bu doküman işlemi için gerekli sistem rolü sizde bulunmuyor."); }
+    private bool CanViewAllConfidentialDocuments() => user.IsInRole(QmsRoles.Administrator)
+        || user.IsInRole(QmsRoles.QualityAssurance) || user.IsInRole(QmsRoles.DocumentController);
     private async Task CompleteTasksAsync(Guid id, string role, DateTimeOffset now, CancellationToken ct) { var tasks = await db.WorkflowTaskAssignments.Where(x => x.AggregateType == "Document" && x.AggregateId == id && x.TaskRole == role && x.Status == WorkflowTaskStatus.Active).ToListAsync(ct); foreach (var task in tasks) task.Complete(now); }
     private async Task AssignRoleAsync(Guid id, string taskRole, string roleName, Guid? excluded, DateTimeOffset now, DateTimeOffset? due, CancellationToken ct) { var userId = await (from link in db.UserRoles.AsNoTracking() join role in db.Roles.AsNoTracking() on link.RoleId equals role.Id join target in db.Users.AsNoTracking() on link.UserId equals target.Id where role.Name == roleName && target.IsActive && target.Id != excluded orderby target.DisplayName select target.Id).FirstOrDefaultAsync(ct); if (userId == Guid.Empty) throw new InvalidOperationException($"{roleName} rolünde atanabilir etkin kullanıcı bulunamadı."); await AssignUserAsync(id, taskRole, userId, now, due, ct); }
-    private async Task AssignUserAsync(Guid id, string taskRole, Guid userId, DateTimeOffset now, DateTimeOffset? due, CancellationToken ct) { var target = await (from u in db.Users.AsNoTracking() join d in db.Departments.AsNoTracking() on u.DepartmentId equals d.Id into ds from d in ds.DefaultIfEmpty() where u.Id == userId && u.IsActive select new { u.Id, u.DisplayName, u.DepartmentId, DepartmentName = d == null ? null : d.Name }).SingleOrDefaultAsync(ct) ?? throw new InvalidOperationException("Doküman görevi için seçilen kullanıcı etkin değil."); db.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Document", id, taskRole, target.Id, target.DepartmentId, now, due, assignedUserNameSnapshot: target.DisplayName, assignedDepartmentNameSnapshot: target.DepartmentName)); db.UserNotifications.Add(UserNotification.Create(target.Id, "M.04", "Yeni doküman görevi", $"{TaskRoleLabel(taskRole)} görevi size atandı.", $"/modules/documents?open={id}", now)); }
+    private async Task AssignUserAsync(Guid id, string taskRole, Guid userId, DateTimeOffset now, DateTimeOffset? due, CancellationToken ct) { var target = await (from u in db.Users.AsNoTracking() join d in db.Departments.AsNoTracking() on u.DepartmentId equals d.Id into ds from d in ds.DefaultIfEmpty() where u.Id == userId && u.IsActive select new { u.Id, u.DisplayName, u.DepartmentId, DepartmentName = d == null ? null : d.Name }).SingleOrDefaultAsync(ct) ?? throw new InvalidOperationException("Doküman görevi için seçilen kullanıcı etkin değil."); db.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Document", id, taskRole, target.Id, target.DepartmentId, now, due, assignedUserNameSnapshot: target.DisplayName, assignedDepartmentNameSnapshot: target.DepartmentName)); db.UserNotifications.Add(UserNotification.Create(target.Id, "M.04", "Yeni doküman görevi", $"{TaskRoleLabel(taskRole)} görevi size atandı.", $"/modules/m04?open={id}", now)); }
     private async Task<bool> CanCurrentUserPerformAsync(Guid id, string? role, CancellationToken ct) { if (role is null) return false; var owners = await db.WorkflowTaskAssignments.AsNoTracking().Where(x => x.AggregateType == "Document" && x.AggregateId == id && x.TaskRole == role && x.Status == WorkflowTaskStatus.Active).Select(x => x.AssignedUserId).ToListAsync(ct); if (owners.Contains(user.Id)) return true; if (owners.Count == 0) return false; var now = clock.GetUtcNow(); return await db.Delegations.AsNoTracking().AnyAsync(x => owners.Contains(x.DelegatorUserId) && x.DelegateUserId == user.Id && x.RevokedAtUtc == null && x.StartsAtUtc <= now && x.EndsAtUtc >= now && (x.Scope == "ALL" || x.Scope == "M.04"), ct); }
     private async Task<IReadOnlyList<string>> GetCurrentUserTaskRolesAsync(Guid id, CancellationToken ct) { var assignments = await db.WorkflowTaskAssignments.AsNoTracking().Where(x => x.AggregateType == "Document" && x.AggregateId == id && x.Status == WorkflowTaskStatus.Active).Select(x => new { x.TaskRole, x.AssignedUserId }).ToListAsync(ct); var roles = assignments.Where(x => x.AssignedUserId == user.Id).Select(x => x.TaskRole).ToHashSet(); var owners = assignments.Select(x => x.AssignedUserId).Distinct().ToList(); var now = clock.GetUtcNow(); var delegated = await db.Delegations.AsNoTracking().Where(x => owners.Contains(x.DelegatorUserId) && x.DelegateUserId == user.Id && x.RevokedAtUtc == null && x.StartsAtUtc <= now && x.EndsAtUtc >= now && (x.Scope == "ALL" || x.Scope == "M.04")).Select(x => x.DelegatorUserId).ToListAsync(ct); foreach (var role in assignments.Where(x => delegated.Contains(x.AssignedUserId)).Select(x => x.TaskRole)) roles.Add(role); return roles.OrderBy(x => x).ToList(); }
     private async Task CreateTrainingAssignmentsAsync(ControlledDocument document, DateTimeOffset now, IDbContextTransaction tx, CancellationToken ct)
@@ -191,7 +207,7 @@ public sealed class DocumentService(QmsDbContext db, TimeProvider clock, ICurren
                 db.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Training", assignment.Id, WorkflowTaskRoles.Learner, employee.Id, employee.DepartmentId, now, document.PlannedEffectiveDateUtc, assignedUserNameSnapshot: employee.DisplayName, assignedDepartmentNameSnapshot: null));
                 db.UserNotifications.Add(UserNotification.Create(coordinator.Id, "M.05", "Yeni eğitim koordinasyon görevi", $"{number} numaralı doküman eğitiminin koordinasyonu size atandı.", $"/modules/m05?open={assignment.Id}", now));
                 db.UserNotifications.Add(UserNotification.Create(employee.Id, "M.05", "Yeni eğitim görevi", $"{document.DocumentCode} doküman eğitimi size atandı.", $"/modules/m05?open={assignment.Id}", now));
-                db.AuditEvents.Add(AuditEvent.Create("Training", assignment.Id, assignment.Version, "TrainingAssignmentCreatedFromDocument", user.Id, user.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { number, documentId = document.Id, documentRevisionId = document.CurrentRevisionId, requirementId = requirement.Id, employeeId = employee.Id })));
+                db.AuditEvents.Add(AuditEvent.Create("Training", assignment.Id, assignment.Version, "TrainingAssignmentCreatedFromDocument", user.Id, user.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { number, documentId = document.Id, documentRevisionId = document.CurrentRevisionId, requirementId = requirement.Id, employeeId = employee.Id })));
             }
         }
     }

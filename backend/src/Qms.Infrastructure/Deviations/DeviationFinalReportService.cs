@@ -29,7 +29,7 @@ public sealed class DeviationFinalReportService(IConfiguration configuration) : 
         var path = Path.Combine(directory, fileName);
         var hashPath = path + ".sha256";
 
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFontResolver();
             var snapshotHash = CanonicalSnapshotHash(details);
@@ -58,6 +58,7 @@ public sealed class DeviationFinalReportService(IConfiguration configuration) : 
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(actualHash), Encoding.ASCII.GetBytes(expectedHash)))
             throw new InvalidOperationException("Arşivlenmiş nihai PDF bütünlük doğrulamasını geçemedi.");
 
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actualHash, reportIsNew, cancellationToken);
         return new DeviationFinalReportFile(bytes, fileName, actualHash);
     }
 

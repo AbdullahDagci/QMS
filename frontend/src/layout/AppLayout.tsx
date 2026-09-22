@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   Avatar,
+  Alert,
   Badge,
   Box,
   Drawer,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Button,
   IconButton,
   InputAdornment,
@@ -27,11 +32,18 @@ import { GlobalNetworkLoader } from '../components/GlobalNetworkLoader'
 import { administrationItem, allNavigationItems, dashboardItem, navigationGroups } from '../navigation'
 import { Permissions, useAuth } from '../security/AuthContext'
 import { getNotifications, markAllNotificationsRead, markNotificationRead, type NotificationList } from '../api/notifications'
+import { changePassword } from '../api/security'
 
 export function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null)
   const [notificationAnchor, setNotificationAnchor] = useState<HTMLElement | null>(null)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSaved, setPasswordSaved] = useState(false)
+  const [passwordPending, setPasswordPending] = useState(false)
   const [notifications, setNotifications] = useState<NotificationList>({ unreadCount: 0, items: [] })
   const location = useLocation()
   const navigate = useNavigate()
@@ -52,6 +64,13 @@ export function AppLayout() {
     setNotificationAnchor(null)
     await refreshNotifications()
     if (item.link) navigate(item.link)
+  }
+  const closePassword = () => {
+    setPasswordOpen(false)
+    setCurrentPassword('')
+    setNewPassword('')
+    setPasswordError(null)
+    setPasswordSaved(false)
   }
 
   return (
@@ -131,6 +150,7 @@ export function AppLayout() {
               </Box>
             </Button>
             <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)}>
+              <MenuItem onClick={() => { setProfileAnchor(null); setPasswordOpen(true); setPasswordError(null); setPasswordSaved(false) }}><ListItemText primary="Parolayı değiştir" /></MenuItem>
               <MenuItem onClick={async () => { setProfileAnchor(null); await logout() }}><ListItemText primary="Oturumu kapat" /></MenuItem>
             </Menu>
           </Stack>
@@ -142,6 +162,37 @@ export function AppLayout() {
           </Box>
         </Box>
       </Box>
+      <Dialog open={passwordOpen} onClose={() => !passwordPending && closePassword()} fullWidth maxWidth="xs">
+        <DialogTitle>Parolayı değiştir</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {passwordError && <Alert severity="error">{passwordError}</Alert>}
+            {passwordSaved && <Alert severity="success">Parolanız değiştirildi; diğer oturumlar kapatıldı.</Alert>}
+            <TextField type="password" label="Mevcut parola" autoComplete="current-password"
+              value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+            <TextField type="password" label="Yeni parola" autoComplete="new-password"
+              helperText="En az 12 karakter; büyük/küçük harf, rakam ve özel karakter içermelidir."
+              value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={passwordPending} onClick={closePassword}>Kapat</Button>
+          <Button variant="contained" disabled={passwordPending || !currentPassword || !newPassword}
+            onClick={async () => {
+              setPasswordPending(true); setPasswordError(null); setPasswordSaved(false)
+              try {
+                await changePassword(currentPassword, newPassword)
+                setCurrentPassword(''); setNewPassword(''); setPasswordSaved(true)
+              } catch (error) {
+                setPasswordError(error instanceof Error ? error.message : 'Parola değiştirilemedi.')
+              } finally {
+                setPasswordPending(false)
+              }
+            }}>
+            {passwordPending ? 'Değiştiriliyor…' : 'Parolayı değiştir'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

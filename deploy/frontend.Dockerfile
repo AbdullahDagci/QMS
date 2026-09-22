@@ -8,6 +8,8 @@ COPY frontend/ .
 RUN npm run build
 
 FROM nginx:1.28.0-alpine AS final
+COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/dist /usr/share/nginx/html
-EXPOSE 80
+USER nginx
+EXPOSE 8443

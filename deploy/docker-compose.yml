@@ -5,71 +5,203 @@ services:
     image: postgres:18.6-alpine
     environment:
       POSTGRES_DB: ${QMS_DB_NAME:-qms}
-      POSTGRES_USER: ${QMS_DB_USER:-qms_app}
-      POSTGRES_PASSWORD: ${QMS_DB_PASSWORD:-qms_dev_password}
-    ports:
-      - "${QMS_DB_PORT:-5432}:5432"
+      POSTGRES_USER: ${QMS_DB_OWNER_USER:-qms_owner}
+      POSTGRES_PASSWORD_FILE: /run/secrets/qms_db_owner_password
+      QMS_DB_APP_USER: ${QMS_DB_APP_USER:-qms_app}
+    secrets:
+      - qms_db_owner_password
+      - qms_db_app_password
     volumes:
       - qms-postgres-data:/var/lib/postgresql
+      - ./init-runtime-role.sh:/docker-entrypoint-initdb.d/10-qms-runtime-role.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${QMS_DB_USER:-qms_app} -d ${QMS_DB_NAME:-qms}"]
+      test: ["CMD-SHELL", "pg_isready -U ${QMS_DB_OWNER_USER:-qms_owner} -d ${QMS_DB_NAME:-qms}"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.30
 
   qms-api:
     build:
       context: ..
       dockerfile: deploy/api.Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+      ASPNETCORE_ENVIRONMENT: Production
+      AllowedHosts: ${QMS_ALLOWED_HOSTS:?QMS_ALLOWED_HOSTS must be set}
+      Database__Host: qms-postgres
+      Database__Port: "5432"
+      Database__Name: ${QMS_DB_NAME:-qms}
+      Database__Username: ${QMS_DB_APP_USER:-qms_app}
+      Secrets__DatabasePasswordFile: /run/secrets/qms_db_password
+      Secrets__RecordIntegrityHmacKeyFile: /run/secrets/qms_integrity_hmac_key
       FileStorage__RootPath: /data/qms-files
+      FileStorage__MinimumRetentionYears: ${QMS_FILE_MINIMUM_RETENTION_YEARS:-10}
+      FileStorage__MalwareScanning__Required: "true"
+      FileStorage__MalwareScanning__Host: qms-clamav
+      FileStorage__MalwareScanning__Port: "3310"
+      ReverseProxy__KnownProxies__0: 172.30.0.10
+    secrets:
+      - source: qms_db_app_password
+        target: qms_db_password
+      - qms_integrity_hmac_key
     volumes:
       - qms-files:/data/qms-files
     depends_on:
       qms-postgres:
         condition: service_healthy
+      qms-clamav:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.20
 
   qms-worker:
     build:
       context: ..
       dockerfile: deploy/worker.Dockerfile
     environment:
-      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
-      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+      DOTNET_ENVIRONMENT: Production
+      Database__Host: qms-postgres
+      Database__Port: "5432"
+      Database__Name: ${QMS_DB_NAME:-qms}
+      Database__Username: ${QMS_DB_APP_USER:-qms_app}
+      Secrets__DatabasePasswordFile: /run/secrets/qms_db_password
+      Secrets__RecordIntegrityHmacKeyFile: /run/secrets/qms_integrity_hmac_key
+      Secrets__SmtpPasswordFile: /run/secrets/qms_smtp_password
       FileStorage__RootPath: /data/qms-files
+      Notifications__Smtp__Host: ${QMS_SMTP_HOST:?QMS_SMTP_HOST must be set}
+      Notifications__Smtp__Port: ${QMS_SMTP_PORT:-587}
+      Notifications__Smtp__Sender: ${QMS_SMTP_SENDER:?QMS_SMTP_SENDER must be set}
+      Notifications__Smtp__UseTls: ${QMS_SMTP_USE_TLS:-true}
+      Notifications__Smtp__Username: ${QMS_SMTP_USERNAME:-}
+    secrets:
+      - source: qms_db_app_password
+        target: qms_db_password
+      - qms_integrity_hmac_key
+      - qms_smtp_password
     volumes:
       - qms-files:/data/qms-files
     depends_on:
       qms-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.40
 
   qms-web:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
     ports:
-      - "${QMS_WEB_PORT:-8080}:80"
+      - "${QMS_HTTPS_PORT:-8443}:8443"
+    secrets:
+      - qms_tls_cert
+      - qms_tls_key
     depends_on:
-      - qms-api
+      qms-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "--no-check-certificate", "https://127.0.0.1:8443/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.10
+
+  qms-clamav:
+    image: clamav/clamav:1.4.3
+    volumes:
+      - qms-clamav-data:/var/lib/clamav
+    restart: unless-stopped
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.60
 
   qms-migrator:
     build:
       context: ..
       dockerfile: deploy/migrator.Dockerfile
     environment:
-      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
-      ConnectionStrings__QmsDatabase: Host=qms-postgres;Port=5432;Database=${QMS_DB_NAME:-qms};Username=${QMS_DB_USER:-qms_app};Password=${QMS_DB_PASSWORD:-qms_dev_password}
+      DOTNET_ENVIRONMENT: Production
+      Database__Host: qms-postgres
+      Database__Port: "5432"
+      Database__Name: ${QMS_DB_NAME:-qms}
+      Database__Username: ${QMS_DB_OWNER_USER:-qms_owner}
+      Database__RuntimeUsername: ${QMS_DB_APP_USER:-qms_app}
+      BootstrapAdmin__Email: ${QMS_BOOTSTRAP_ADMIN_EMAIL:?QMS_BOOTSTRAP_ADMIN_EMAIL must be set}
+      BootstrapAdmin__DisplayName: ${QMS_BOOTSTRAP_ADMIN_DISPLAY_NAME:?QMS_BOOTSTRAP_ADMIN_DISPLAY_NAME must be set}
+      Secrets__DatabasePasswordFile: /run/secrets/qms_db_password
+      Secrets__RecordIntegrityHmacKeyFile: /run/secrets/qms_integrity_hmac_key
+      Secrets__BootstrapAdminPasswordFile: /run/secrets/qms_bootstrap_admin_password
+    secrets:
+      - source: qms_db_owner_password
+        target: qms_db_password
+      - qms_integrity_hmac_key
+      - qms_bootstrap_admin_password
     depends_on:
       qms-postgres:
         condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     profiles: ["tools"]
+    networks:
+      qms-internal:
+        ipv4_address: 172.30.0.50
 
 volumes:
   qms-postgres-data:
   qms-files:
+  qms-clamav-data:
+
+secrets:
+  qms_db_owner_password:
+    file: ${QMS_DB_OWNER_PASSWORD_FILE:?QMS_DB_OWNER_PASSWORD_FILE must be set}
+  qms_db_app_password:
+    file: ${QMS_DB_APP_PASSWORD_FILE:?QMS_DB_APP_PASSWORD_FILE must be set}
+  qms_integrity_hmac_key:
+    file: ${QMS_INTEGRITY_HMAC_KEY_FILE:?QMS_INTEGRITY_HMAC_KEY_FILE must be set}
+  qms_bootstrap_admin_password:
+    file: ${QMS_BOOTSTRAP_ADMIN_PASSWORD_FILE:?QMS_BOOTSTRAP_ADMIN_PASSWORD_FILE must be set}
+  qms_smtp_password:
+    file: ${QMS_SMTP_PASSWORD_FILE:?QMS_SMTP_PASSWORD_FILE must be set}
+  qms_tls_cert:
+    file: ${QMS_TLS_CERT_PATH:?QMS_TLS_CERT_PATH must be set}
+  qms_tls_key:
+    file: ${QMS_TLS_KEY_PATH:?QMS_TLS_KEY_PATH must be set}
+
+networks:
+  qms-internal:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

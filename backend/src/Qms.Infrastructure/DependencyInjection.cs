@@ -36,6 +36,13 @@ using Qms.Infrastructure.SpecializedRecords;
 using Qms.Infrastructure.SupplierAudits;
 using Qms.Infrastructure.Trainings;
 using Qms.Infrastructure.WorkItems;
+using Qms.Application.Files;
+using Qms.Application.ElectronicForms;
+using Qms.Infrastructure.Files;
+using Qms.Infrastructure.Integrity;
+using Qms.Infrastructure.Outbox;
+using Qms.Infrastructure.Security;
+using Qms.Infrastructure.ElectronicForms;
 
 namespace Qms.Infrastructure;
 
@@ -60,6 +67,18 @@ public static class DependencyInjection
         );
 
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<RecordIntegrityService>();
+        services.AddSingleton<FinalReportIntegrity>();
+        services.AddScoped<FinalReportIntegrityBackfill>();
+        services.AddSingleton<FileThreatScanner>();
+        services.AddScoped<IManagedFileService, ManagedFileService>();
+        services.AddScoped<AuditIntegrityVerifier>();
+        services.AddScoped<QmsIntegrityBackfill>();
+        services.AddSingleton<SmtpNotificationSender>();
+        services.AddScoped<OutboxProcessor>();
+        services.AddScoped<DeadlineEscalationService>();
+        services.AddScoped<RecordAccessBackfill>();
+        services.AddScoped<DatabasePrivilegeHardening>();
         services.AddScoped<IElectronicSignatureService, ElectronicSignatureService>();
         services.AddScoped<IDeviationService, DeviationService>();
         services.AddScoped<IDeviationFinalReportService, DeviationFinalReportService>();
@@ -88,6 +107,9 @@ public static class DependencyInjection
         services.AddScoped<IMbrFinalReportService, MbrFinalReportService>();
         services.AddScoped<ISpecializedRecordService, SpecializedRecordService>();
         services.AddScoped<ISpecializedFinalReportService, SpecializedFinalReportService>();
+        services.AddSingleton<ElectronicFormSchemaValidator>();
+        services.AddScoped<IElectronicFormService, ElectronicFormService>();
+        services.AddScoped<IElectronicFormFinalReportService, ElectronicFormFinalReportService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<QmsIdentitySeeder>();
         services.AddScoped<IAccessAdministrationService, AccessAdministrationService>();

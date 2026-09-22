@@ -26,7 +26,7 @@ public static class SupplierAuditEndpoints
         group.MapPost("/{id:guid}/findings/{findingId:guid}/close", (Guid id, Guid findingId, CloseSupplierAuditFindingRequest request, ISupplierAuditService service, CancellationToken ct) => Run(() => service.CloseFindingAsync(id, findingId, request, ct))).RequireAuthorization(QmsPolicies.SupplierAuditApprove);
         group.MapPost("/{id:guid}/invitations", (Guid id, CreateSupplierInvitationRequest request, ISupplierAuditService service, CancellationToken ct) => Run(() => service.CreateInvitationAsync(id, request, ct))).RequireAuthorization(QmsPolicies.SupplierAuditRespond);
         group.MapPost("/{id:guid}/result", (Guid id, RecordSupplierAuditResultRequest request, ISupplierAuditService service, CancellationToken ct) => Run(() => service.RecordResultAsync(id, request, ct))).RequireAuthorization(QmsPolicies.SupplierAuditApprove);
-        endpoints.MapPost("/api/v1/supplier-audit-invitations/respond", (SupplierInvitationSubmissionRequest request, ISupplierAuditService service, CancellationToken ct) => Run(() => service.SubmitInvitationResponseAsync(request, ct))).AllowAnonymous().WithTags("Supplier Audit Portal");
+        endpoints.MapPost("/api/v1/supplier-audit-invitations/respond", (SupplierInvitationSubmissionRequest request, ISupplierAuditService service, CancellationToken ct) => Run(() => service.SubmitInvitationResponseAsync(request, ct))).AllowAnonymous().RequireRateLimiting("anonymous-write").WithTags("Supplier Audit Portal");
         return endpoints;
     }
 

@@ -15,13 +15,12 @@ using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
+using Qms.Infrastructure.Security;
 
 namespace Qms.Infrastructure.Capas;
 
 public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvider, ICurrentUser currentUser, IElectronicSignatureService signatures) : ICapaService
 {
-    private static readonly Guid PrototypeDepartmentId = Guid.Parse("01991f70-6f40-7000-8000-000000000002");
-
     public async Task<CapaLookupsResponse> GetLookupsAsync(CancellationToken cancellationToken)
     {
         var users = await (from user in dbContext.Users.AsNoTracking()
@@ -44,10 +43,10 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     {
         if (request.Page < 1 || request.PageSize is not (10 or 25 or 50 or 100)) throw new ArgumentException("Sayfa ve sayfa boyutu geçersizdir.");
         var query = from capa in dbContext.Capas.AsNoTracking()
-                    join record in dbContext.QualityRecords.AsNoTracking() on capa.QualityRecordId equals record.Id
+                    join record in dbContext.VisibleQualityRecords(currentUser) on capa.QualityRecordId equals record.Id
                     join source in dbContext.Deviations.AsNoTracking() on capa.SourceDeviationId equals source.Id into sources
                     from source in sources.DefaultIfEmpty()
-                    join sourceRecord in dbContext.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords
+                    join sourceRecord in dbContext.VisibleQualityRecords(currentUser) on source.QualityRecordId equals sourceRecord.Id into sourceRecords
                     from sourceRecord in sourceRecords.DefaultIfEmpty()
                     select new CapaRow { Capa = capa, RecordNumber = record.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber };
         foreach (var filter in request.Filters ?? []) query = ApplyFilter(query, filter);
@@ -62,10 +61,10 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     public async Task<CapaDetailsResponse?> GetDetailsAsync(Guid id, CancellationToken cancellationToken)
     {
         var data = await (from capa in dbContext.Capas.AsNoTracking().Include(x => x.Actions)
-                          join record in dbContext.QualityRecords.AsNoTracking() on capa.QualityRecordId equals record.Id
+                          join record in dbContext.VisibleQualityRecords(currentUser) on capa.QualityRecordId equals record.Id
                           join source in dbContext.Deviations.AsNoTracking() on capa.SourceDeviationId equals source.Id into sources
                           from source in sources.DefaultIfEmpty()
-                          join sourceRecord in dbContext.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords
+                          join sourceRecord in dbContext.VisibleQualityRecords(currentUser) on source.QualityRecordId equals sourceRecord.Id into sourceRecords
                           from sourceRecord in sourceRecords.DefaultIfEmpty()
                           where capa.Id == id
                           select new { Capa = capa, RecordNumber = record.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber }).SingleOrDefaultAsync(cancellationToken);
@@ -96,7 +95,9 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     {
         if (request.SourceDeviationId is Guid sourceId)
         {
-            if (!await dbContext.Deviations.AnyAsync(x => x.Id == sourceId, cancellationToken)) throw new ArgumentException("Kaynak sapma bulunamadı.");
+            if (!await dbContext.Deviations.AnyAsync(x => x.Id == sourceId
+                    && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), cancellationToken))
+                throw new ArgumentException("Kaynak sapma bulunamadı.");
             var existing = await dbContext.Capas.AsNoTracking().Where(x => x.SourceDeviationId == sourceId).Select(x => x.Id).SingleOrDefaultAsync(cancellationToken);
             if (existing != Guid.Empty) return (await GetDetailsAsync(existing, cancellationToken))!;
         }
@@ -104,7 +105,9 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
         await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var sequence = await NextRecordNumberAsync(now.Year, tx, cancellationToken);
         var number = $"DÖF-{now.Year}-{sequence:000000}";
-        var qr = QualityRecord.Create(number, "capa", currentUser.Id, currentUser.DepartmentId ?? PrototypeDepartmentId, now);
+        var creatorDepartmentId = currentUser.DepartmentId
+            ?? throw new InvalidOperationException("DÖF oluşturacak kullanıcının etkin organizasyon bölümü zorunludur.");
+        var qr = QualityRecord.Create(number, "capa", currentUser.Id, creatorDepartmentId, now);
         var owner = await ActiveUserAsync(request.OwnerUserId, cancellationToken);
         (Guid Id, string DisplayName)? evaluator = request.EffectivenessEvaluatorUserId is Guid evaluatorId ? await ActiveUserAsync(evaluatorId, cancellationToken) : null;
         var capa = Capa.Create(qr.Id, request.SourceDeviationId, request.SourceType, request.Title, request.Description, request.RootCause, request.ImmediateActions, owner.Id, owner.DisplayName, request.TargetDateUtc.ToUniversalTime(), request.EffectivenessRequired, request.EffectivenessMethod ?? "", request.EffectivenessSample ?? "", request.ObservationPeriodDays, request.SuccessCriteria ?? "", evaluator?.Id, evaluator?.DisplayName ?? "", now);
@@ -117,7 +120,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     public async Task<CapaDetailsResponse?> CompleteActionAsync(Guid id, Guid actionId, CompleteCapaActionRequest request, CancellationToken ct)
     {
         await EnsureAssignedActorAsync(id, ActionTaskRole(actionId), ct);
-        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (capa is null) return null;
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), ct); if (capa is null) return null;
         var now = timeProvider.GetUtcNow(); var from = capa.Status; await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
         capa.RequestActionCompletion(request.ExpectedVersion, actionId, request.Evidence, now);
         await CompleteTasksAsync(id, ActionTaskRole(actionId), now, ct);
@@ -130,7 +134,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     public async Task<CapaDetailsResponse?> VerifyActionAsync(Guid id, Guid actionId, VerifyCapaActionRequest request, CancellationToken ct)
     {
         await EnsureAssignedActorAsync(id, WorkflowTaskRoles.Evaluator, ct);
-        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (capa is null) return null;
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), ct); if (capa is null) return null;
         var qr = await dbContext.QualityRecords.SingleAsync(x => x.Id == capa.QualityRecordId, ct);
         var now = timeProvider.GetUtcNow(); var from = capa.Status; await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
         capa.VerifyAction(request.ExpectedVersion, actionId, request.Approved, request.Note, now);
@@ -151,7 +156,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
 
     public async Task<CapaDetailsResponse?> TransitionAsync(Guid id, TransitionCapaRequest request, CancellationToken ct)
     {
-        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct);
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), ct);
         if (capa is null) return null;
         var qr = await dbContext.QualityRecords.SingleAsync(x => x.Id == capa.QualityRecordId, ct);
         var now = timeProvider.GetUtcNow();
@@ -229,7 +235,8 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
 
     private async Task<CapaDetailsResponse?> Mutate(Guid id, CancellationToken ct, Func<Capa, DateTimeOffset, (string Type, object Payload, string? Reason)> action)
     {
-        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (capa is null) return null;
+        var capa = await dbContext.Capas.Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), ct); if (capa is null) return null;
         var now = timeProvider.GetUtcNow(); await using var tx = await dbContext.Database.BeginTransactionAsync(ct); var audit = action(capa, now);
         dbContext.AuditEvents.Add(Audit(capa, audit.Type, now, audit.Payload, audit.Reason)); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
@@ -262,7 +269,7 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
     {
         var desc = direction.Equals("desc", StringComparison.OrdinalIgnoreCase); return field.Trim().ToLowerInvariant() switch { "recordnumber" => desc ? q.OrderByDescending(x => x.RecordNumber) : q.OrderBy(x => x.RecordNumber), "title" => desc ? q.OrderByDescending(x => x.Capa.Title) : q.OrderBy(x => x.Capa.Title), "owner" => desc ? q.OrderByDescending(x => x.Capa.Owner) : q.OrderBy(x => x.Capa.Owner), "targetdateutc" => desc ? q.OrderByDescending(x => x.Capa.TargetDateUtc) : q.OrderBy(x => x.Capa.TargetDateUtc), "status" => desc ? q.OrderByDescending(x => x.Capa.Status) : q.OrderBy(x => x.Capa.Status), _ => desc ? q.OrderByDescending(x => x.Capa.CreatedAtUtc) : q.OrderBy(x => x.Capa.CreatedAtUtc) };
     }
-    private AuditEvent Audit(Capa c, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("Capa", c.Id, c.Version, type, currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(payload), reason);
+    private AuditEvent Audit(Capa c, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("Capa", c.Id, c.Version, type, currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(payload), reason);
     private void EnsureMakerChecker(QualityRecord record, string transition) { var approval = transition.Trim().ToLowerInvariant() is "approve-scope" or "approve-root-cause" or "approve-plan" or "approve-actions" or "complete-effectiveness" or "close"; if (approval && record.CreatedByUserId == currentUser.Id && !currentUser.IsInRole(QmsRoles.Administrator)) throw new QmsForbiddenException("Görev ayrılığı kuralı: Kaydı oluşturan kullanıcı aynı DÖF kaydının onayını veremez."); }
     private async Task EnsureAssignedActorAsync(Guid aggregateId, string taskRole, CancellationToken ct) { if (!await CanCurrentUserPerformAsync(aggregateId, taskRole, ct)) throw new QmsForbiddenException("Bu DÖF görevi size veya etkin bir delegasyonla size atanmamış."); }
     private async Task CompleteTasksAsync(Guid aggregateId, string taskRole, DateTimeOffset now, CancellationToken ct) { var tasks = await dbContext.WorkflowTaskAssignments.Where(item => item.AggregateType == "Capa" && item.AggregateId == aggregateId && item.TaskRole == taskRole && item.Status == WorkflowTaskStatus.Active).ToListAsync(ct); foreach (var task in tasks) task.Complete(now); }
@@ -278,7 +285,7 @@ public sealed class CapaService(QmsDbContext dbContext, TimeProvider timeProvide
                           select new { candidate.Id, candidate.DisplayName, candidate.DepartmentId, DepartmentName = department == null ? null : department.Name }).SingleOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Görev için seçilen kullanıcı etkin değil.");
         dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Capa", aggregateId, taskRole, user.Id, user.DepartmentId, now, dueAt, assignedUserNameSnapshot: user.DisplayName, assignedDepartmentNameSnapshot: user.DepartmentName));
-        var recordNumber = await (from capa in dbContext.Capas.AsNoTracking() join qr in dbContext.QualityRecords.AsNoTracking() on capa.QualityRecordId equals qr.Id where capa.Id == aggregateId select qr.RecordNumber).SingleAsync(ct);
+        var recordNumber = await (from capa in dbContext.Capas.AsNoTracking() join qr in dbContext.VisibleQualityRecords(currentUser) on capa.QualityRecordId equals qr.Id where capa.Id == aggregateId select qr.RecordNumber).SingleAsync(ct);
         dbContext.UserNotifications.Add(UserNotification.Create(user.Id, "M.02", "Yeni DÖF görevi atandı", $"{recordNumber} için {TaskRoleLabel(taskRole)} görevi size atandı.", $"/modules/m02?open={aggregateId}", now));
     }
 

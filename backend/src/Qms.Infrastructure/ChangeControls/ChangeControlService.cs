@@ -15,6 +15,7 @@ using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
+using Qms.Infrastructure.Security;
 
 namespace Qms.Infrastructure.ChangeControls;
 
@@ -40,13 +41,13 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
         var category = request.Category.Trim(); if (!LookupCategories.Contains(category)) throw new ArgumentException("M.03 lookup kategorisi geçersizdir.");
         if (await dbContext.ChangeLookupDefinitions.AnyAsync(x => x.Category == category && x.Code == request.Code.Trim(), ct)) throw new InvalidOperationException("Aynı kategori ve kodla bir lookup zaten mevcut.");
         var now = timeProvider.GetUtcNow(); var item = ChangeLookupDefinition.Create(category, request.Code, request.Name, request.SortOrder, now); dbContext.ChangeLookupDefinitions.Add(item);
-        dbContext.AuditEvents.Add(AuditEvent.Create("ChangeLookupDefinition", item.Id, 1, "ChangeLookupCreated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder })));
+        dbContext.AuditEvents.Add(AuditEvent.Create("ChangeLookupDefinition", item.Id, 1, "ChangeLookupCreated", currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder })));
         await dbContext.SaveChangesAsync(ct); return new(item.Id, item.Category, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
     public async Task<ChangeLookupDefinitionResponse?> UpdateLookupDefinitionAsync(Guid id, UpdateChangeLookupDefinitionRequest request, CancellationToken ct)
     {
         var item = await dbContext.ChangeLookupDefinitions.SingleOrDefaultAsync(x => x.Id == id, ct); if (item is null) return null; var now = timeProvider.GetUtcNow(); item.Update(request.Name, request.SortOrder, request.IsActive, now);
-        dbContext.AuditEvents.Add(AuditEvent.Create("ChangeLookupDefinition", item.Id, 1, "ChangeLookupUpdated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder, item.IsActive })));
+        dbContext.AuditEvents.Add(AuditEvent.Create("ChangeLookupDefinition", item.Id, 1, "ChangeLookupUpdated", currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Category, item.Code, item.Name, item.SortOrder, item.IsActive })));
         await dbContext.SaveChangesAsync(ct); return new(item.Id, item.Category, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
 
@@ -54,10 +55,10 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
     {
         if (request.Page < 1 || request.PageSize is not (10 or 25 or 50 or 100)) throw new ArgumentException("Sayfa ve sayfa boyutu geçersizdir.");
         var query = from change in dbContext.ChangeControls.AsNoTracking()
-                    join record in dbContext.QualityRecords.AsNoTracking() on change.QualityRecordId equals record.Id
+                    join record in dbContext.VisibleQualityRecords(currentUser) on change.QualityRecordId equals record.Id
                     join source in dbContext.Capas.AsNoTracking() on change.SourceCapaId equals source.Id into sources
                     from source in sources.DefaultIfEmpty()
-                    join sourceRecord in dbContext.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords
+                    join sourceRecord in dbContext.VisibleQualityRecords(currentUser) on source.QualityRecordId equals sourceRecord.Id into sourceRecords
                     from sourceRecord in sourceRecords.DefaultIfEmpty()
                     select new ChangeRow { Change = change, RecordNumber = record.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber };
         foreach (var filter in request.Filters ?? []) query = ApplyFilter(query, filter);
@@ -70,10 +71,10 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
     public async Task<ChangeControlDetailsResponse?> GetDetailsAsync(Guid id, CancellationToken ct)
     {
         var data = await (from change in dbContext.ChangeControls.AsNoTracking().Include(x => x.Assessments).Include(x => x.Actions)
-                          join record in dbContext.QualityRecords.AsNoTracking() on change.QualityRecordId equals record.Id
+                          join record in dbContext.VisibleQualityRecords(currentUser) on change.QualityRecordId equals record.Id
                           join source in dbContext.Capas.AsNoTracking() on change.SourceCapaId equals source.Id into sources
                           from source in sources.DefaultIfEmpty()
-                          join sourceRecord in dbContext.QualityRecords.AsNoTracking() on source.QualityRecordId equals sourceRecord.Id into sourceRecords
+                          join sourceRecord in dbContext.VisibleQualityRecords(currentUser) on source.QualityRecordId equals sourceRecord.Id into sourceRecords
                           from sourceRecord in sourceRecords.DefaultIfEmpty()
                           where change.Id == id
                           select new { Change = change, RecordNumber = record.RecordNumber, SourceRecordNumber = sourceRecord == null ? null : sourceRecord.RecordNumber }).SingleOrDefaultAsync(ct);
@@ -93,7 +94,9 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
     public async Task<ChangeControlDetailsResponse> CreateAsync(CreateChangeControlRequest request, CancellationToken ct)
     {
         await EnsureActiveLookupAsync("ChangeType", request.ChangeType, ct); await EnsureActiveLookupAsync("RiskLevel", request.RiskLevel, ct); await EnsureActiveLookupAsync("RegulatoryImpact", request.RegulatoryImpact, ct);
-        if (request.SourceCapaId is Guid sourceId && !await dbContext.Capas.AnyAsync(x => x.Id == sourceId, ct)) throw new ArgumentException("Kaynak DÖF kaydı bulunamadı.");
+        if (request.SourceCapaId is Guid sourceId && !await dbContext.Capas.AnyAsync(x => x.Id == sourceId
+                && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == x.QualityRecordId), ct))
+            throw new ArgumentException("Kaynak DÖF kaydı bulunamadı.");
         var now = timeProvider.GetUtcNow(); await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
         var sequence = await NextRecordNumberAsync(now.Year, tx, ct); var number = $"DK-{now.Year}-{sequence:000000}";
         var creatorDepartmentId = currentUser.DepartmentId ?? throw new InvalidOperationException("Değişiklik kaydı oluşturacak kullanıcının etkin bir organizasyon bölümü olmalıdır.");
@@ -124,7 +127,9 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
 
     public async Task<ChangeControlDetailsResponse?> TransitionAsync(Guid id, TransitionChangeControlRequest request, CancellationToken ct)
     {
-        var change = await dbContext.ChangeControls.Include(x => x.Assessments).Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (change is null) return null;
+        var change = await dbContext.ChangeControls.Include(x => x.Assessments).Include(x => x.Actions)
+            .SingleOrDefaultAsync(x => x.Id == id && dbContext.VisibleQualityRecords(currentUser)
+                .Any(record => record.Id == x.QualityRecordId), ct); if (change is null) return null;
         var qr = await dbContext.QualityRecords.SingleAsync(x => x.Id == change.QualityRecordId, ct); var now = timeProvider.GetUtcNow(); var from = change.Status; var transition = request.Transition.Trim().ToLowerInvariant();
         EnsureMakerChecker(qr, transition);
         if (IsApprovalTransition(request.Transition))
@@ -151,7 +156,9 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
 
     private async Task<ChangeControlDetailsResponse?> Mutate(Guid id, CancellationToken ct, Func<ChangeControl, DateTimeOffset, (string Type, object Payload, string? Reason)> action)
     {
-        var change = await dbContext.ChangeControls.Include(x => x.Assessments).Include(x => x.Actions).SingleOrDefaultAsync(x => x.Id == id, ct); if (change is null) return null;
+        var change = await dbContext.ChangeControls.Include(x => x.Assessments).Include(x => x.Actions)
+            .SingleOrDefaultAsync(x => x.Id == id && dbContext.VisibleQualityRecords(currentUser)
+                .Any(record => record.Id == x.QualityRecordId), ct); if (change is null) return null;
         var now = timeProvider.GetUtcNow(); await using var tx = await dbContext.Database.BeginTransactionAsync(ct); var audit = action(change, now); dbContext.AuditEvents.Add(Audit(change, audit.Type, now, audit.Payload, audit.Reason)); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await GetDetailsAsync(id, ct);
     }
 
@@ -185,7 +192,7 @@ public sealed class ChangeControlService(QmsDbContext dbContext, TimeProvider ti
     private static IQueryable<ChangeRow> TextFilter(IQueryable<ChangeRow> q, string op, string value, int field) => field switch { 0 => op == "equals" ? q.Where(x => x.RecordNumber == value) : q.Where(x => x.RecordNumber.ToLower().Contains(value.ToLower())), 1 => op == "equals" ? q.Where(x => x.SourceRecordNumber == value) : q.Where(x => x.SourceRecordNumber != null && x.SourceRecordNumber.ToLower().Contains(value.ToLower())), 2 => op == "equals" ? q.Where(x => x.Change.Title == value) : q.Where(x => x.Change.Title.ToLower().Contains(value.ToLower())), _ => op == "equals" ? q.Where(x => x.Change.Owner == value) : q.Where(x => x.Change.Owner.ToLower().Contains(value.ToLower())) };
     private static IQueryable<ChangeRow> ApplyDate(IQueryable<ChangeRow> q, string op, string? a, string? b, bool target) { var from = DateTimeOffset.Parse(a ?? "", CultureInfo.InvariantCulture).ToUniversalTime(); var to = string.IsNullOrWhiteSpace(b) ? from.AddDays(1) : DateTimeOffset.Parse(b, CultureInfo.InvariantCulture).ToUniversalTime(); return (op, target) switch { ("before", true) => q.Where(x => x.Change.TargetDateUtc < from), ("after", true) => q.Where(x => x.Change.TargetDateUtc > from), (_, true) => q.Where(x => x.Change.TargetDateUtc >= from && x.Change.TargetDateUtc < to), ("before", false) => q.Where(x => x.Change.CreatedAtUtc < from), ("after", false) => q.Where(x => x.Change.CreatedAtUtc > from), _ => q.Where(x => x.Change.CreatedAtUtc >= from && x.Change.CreatedAtUtc < to) }; }
     private static IQueryable<ChangeRow> ApplySort(IQueryable<ChangeRow> q, string field, string direction) { var desc = direction.Equals("desc", StringComparison.OrdinalIgnoreCase); return field.Trim().ToLowerInvariant() switch { "recordnumber" => desc ? q.OrderByDescending(x => x.RecordNumber) : q.OrderBy(x => x.RecordNumber), "title" => desc ? q.OrderByDescending(x => x.Change.Title) : q.OrderBy(x => x.Change.Title), "owner" => desc ? q.OrderByDescending(x => x.Change.Owner) : q.OrderBy(x => x.Change.Owner), "targetdateutc" => desc ? q.OrderByDescending(x => x.Change.TargetDateUtc) : q.OrderBy(x => x.Change.TargetDateUtc), "risklevel" => desc ? q.OrderByDescending(x => x.Change.RiskLevel) : q.OrderBy(x => x.Change.RiskLevel), "status" => desc ? q.OrderByDescending(x => x.Change.Status) : q.OrderBy(x => x.Change.Status), _ => desc ? q.OrderByDescending(x => x.Change.CreatedAtUtc) : q.OrderBy(x => x.Change.CreatedAtUtc) }; }
-    private AuditEvent Audit(ChangeControl c, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("ChangeControl", c.Id, c.Version, type, currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(payload), reason);
+    private AuditEvent Audit(ChangeControl c, string type, DateTimeOffset now, object payload, string? reason = null) => AuditEvent.Create("ChangeControl", c.Id, c.Version, type, currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(payload), reason);
     private void EnsureMakerChecker(QualityRecord record, string transition) { var approval = transition is "approve-preliminary" or "submit-board" or "approve-board" or "approve-plan" or "request-commissioning" or "commission" or "verify-implementation" or "close"; if (approval && record.CreatedByUserId == currentUser.Id) throw new QmsForbiddenException("Görev ayrılığı kuralı: Kaydı oluşturan kullanıcı aynı değişikliğin değerlendirme veya onayını veremez."); }
     private async Task EnsureAssignedActorAsync(Guid aggregateId, string taskRole, CancellationToken ct) { if (!await CanCurrentUserPerformAsync(aggregateId, taskRole, ct)) throw new QmsForbiddenException("Bu değişiklik görevi size veya etkin bir delegasyonla size atanmamış."); }
     private async Task CompleteTasksAsync(Guid aggregateId, string taskRole, DateTimeOffset now, CancellationToken ct) { var tasks = await dbContext.WorkflowTaskAssignments.Where(x => x.AggregateType == "ChangeControl" && x.AggregateId == aggregateId && x.TaskRole == taskRole && x.Status == WorkflowTaskStatus.Active).ToListAsync(ct); foreach (var task in tasks) task.Complete(now); }

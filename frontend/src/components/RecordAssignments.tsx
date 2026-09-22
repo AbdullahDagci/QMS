@@ -14,6 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import { getWorkflowAssignments } from "../api/access";
+import { ManagedFilesPanel } from "./ManagedFilesPanel";
 
 const taskLabels: Record<string, string> = {
   Initiator: "Başlatan",
@@ -159,6 +160,7 @@ export function RecordAssignments({
           </Paper>
         ))}
       </Box>
+      <ManagedFilesPanel aggregateType={aggregateType} aggregateId={aggregateId} />
     </Paper>
   );
 }

@@ -13,6 +13,8 @@ COPY backend/src backend/src
 RUN dotnet publish backend/src/Qms.Worker/Qms.Worker.csproj --configuration Release --no-restore --output /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0.10 AS final
+RUN mkdir -p /data/qms-files && chown -R $APP_UID:$APP_UID /data/qms-files
 WORKDIR /app
 COPY --from=build /app/publish .
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Qms.Worker.dll"]

@@ -14,6 +14,7 @@ using Qms.Domain.Deviations;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.Workflows;
 using Qms.Domain.Notifications;
+using Qms.Infrastructure.Security;
 using Qms.Infrastructure.Persistence;
 
 namespace Qms.Infrastructure.Deviations;
@@ -43,7 +44,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         var now = timeProvider.GetUtcNow();
         var item = DeviationTypeDefinition.Create(code, name, request.SortOrder, now);
         dbContext.DeviationTypeDefinitions.Add(item);
-        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeCreated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder })));
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeCreated", currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder })));
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(item.Id, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
@@ -57,7 +58,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             throw new ArgumentException("Aynı ada sahip sapma türü zaten mevcut.");
         var now = timeProvider.GetUtcNow();
         item.Update(name, request.SortOrder, request.IsActive, now);
-        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeUpdated", currentUser.Id, currentUser.DisplayName, now, Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder, item.IsActive })));
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationTypeDefinition", item.Id, 1, "DeviationTypeUpdated", currentUser.Id, currentUser.DisplayName, now, Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(new { item.Code, item.Name, item.SortOrder, item.IsActive })));
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(item.Id, item.Code, item.Name, item.SortOrder, item.IsActive);
     }
@@ -74,7 +75,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         var rule = DeviationAssignmentRule.Create(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority);
         if (!request.IsActive) rule.Update(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, false);
         dbContext.DeviationAssignmentRules.Add(rule);
-        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleCreated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(request)));
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleCreated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(request)));
         await dbContext.SaveChangesAsync(ct);
         return (await ListAssignmentRulesAsync(ct)).Single(x => x.Id == rule.Id);
     }
@@ -85,7 +86,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         var rule = await dbContext.DeviationAssignmentRules.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (rule is null) return null;
         rule.Update(request.TaskRole, request.AssignedUserId, request.DetectedDepartment, request.DeviationType, request.MinimumRiskScore, request.Priority, request.IsActive);
-        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleUpdated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Guid.CreateVersion7().ToString(), JsonSerializer.SerializeToDocument(request)));
+        dbContext.AuditEvents.Add(AuditEvent.Create("DeviationAssignmentRule", rule.Id, 1, "DeviationAssignmentRuleUpdated", currentUser.Id, currentUser.DisplayName, timeProvider.GetUtcNow(), Qms.Infrastructure.Integrity.AuditCorrelation.Current, JsonSerializer.SerializeToDocument(request)));
         await dbContext.SaveChangesAsync(ct);
         return (await ListAssignmentRulesAsync(ct)).Single(x => x.Id == rule.Id);
     }
@@ -123,7 +124,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         ValidateSearchRequest(request);
         var query =
                 from deviation in dbContext.Deviations.AsNoTracking()
-                join record in dbContext.QualityRecords.AsNoTracking()
+                join record in dbContext.VisibleQualityRecords(currentUser)
                     on deviation.QualityRecordId equals record.Id
                 select new DeviationSearchRow
                 {
@@ -227,7 +228,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             .ToList();
         var linkedCapas = await (
                 from capa in dbContext.Capas.AsNoTracking()
-                join qualityRecord in dbContext.QualityRecords.AsNoTracking()
+                join qualityRecord in dbContext.VisibleQualityRecords(currentUser)
                     on capa.QualityRecordId equals qualityRecord.Id
                 where capa.SourceDeviationId == id
                 orderby capa.CreatedAtUtc descending
@@ -328,7 +329,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         CancellationToken cancellationToken)
     {
         var deviation = await dbContext.Deviations.SingleOrDefaultAsync(
-            item => item.Id == id,
+            item => item.Id == id && dbContext.VisibleQualityRecords(currentUser)
+                .Any(record => record.Id == item.QualityRecordId),
             cancellationToken);
         if (deviation is null)
         {
@@ -371,7 +373,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         AddDeviationInvestigationRequest request,
         CancellationToken cancellationToken)
     {
-        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == item.QualityRecordId), cancellationToken);
         if (deviation is null)
         {
             return null;
@@ -409,7 +412,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         AddDeviationBatchImpactRequest request,
         CancellationToken cancellationToken)
     {
-        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == item.QualityRecordId), cancellationToken);
         if (deviation is null)
         {
             return null;
@@ -453,7 +457,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         TransitionDeviationRequest request,
         CancellationToken cancellationToken)
     {
-        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var deviation = await dbContext.Deviations.SingleOrDefaultAsync(item => item.Id == id
+            && dbContext.VisibleQualityRecords(currentUser).Any(record => record.Id == item.QualityRecordId), cancellationToken);
         if (deviation is null)
         {
             return null;
@@ -596,7 +601,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
 
         return
         from deviation in deviations
-        join record in dbContext.QualityRecords.AsNoTracking()
+        join record in dbContext.VisibleQualityRecords(currentUser)
             on deviation.QualityRecordId equals record.Id
         select new DeviationResponse(
             deviation.Id,
@@ -676,7 +681,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
         currentUser.Id,
         currentUser.DisplayName,
         occurredAtUtc,
-        Guid.CreateVersion7().ToString(),
+        Qms.Infrastructure.Integrity.AuditCorrelation.Current,
         JsonSerializer.SerializeToDocument(payload),
         reason);
 
@@ -724,7 +729,7 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                               where user.Id == userId
                               select new { user.DepartmentId, user.DisplayName, DepartmentName = department == null ? null : department.Name }).SingleAsync(ct);
         dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, taskRole, userId, assignee.DepartmentId, now, deviation.TargetDateUtc, assignedUserNameSnapshot: assignee.DisplayName, assignedDepartmentNameSnapshot: assignee.DepartmentName));
-        var recordNumber = await dbContext.QualityRecords.AsNoTracking().Where(x => x.Id == deviation.QualityRecordId).Select(x => x.RecordNumber).SingleAsync(ct);
+        var recordNumber = await dbContext.VisibleQualityRecords(currentUser).Where(x => x.Id == deviation.QualityRecordId).Select(x => x.RecordNumber).SingleAsync(ct);
         dbContext.UserNotifications.Add(UserNotification.Create(
             userId,
             "M.01",

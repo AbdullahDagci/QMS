@@ -26,7 +26,7 @@ public sealed class ExternalAuditFinalReportService(IConfiguration configuration
         var fileName = $"{safeNumber}-nihai-dis-denetim-v{details.Record.Version}.pdf";
         var path = Path.Combine(directory, fileName);
         var hashPath = path + ".sha256";
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFont();
             var bytes = Build(details, SnapshotHash(details));
@@ -38,7 +38,7 @@ public sealed class ExternalAuditFinalReportService(IConfiguration configuration
         var actual = Convert.ToHexStringLower(SHA256.HashData(content));
         var expected = (await File.ReadAllTextAsync(hashPath, ct)).Trim();
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(actual), Encoding.ASCII.GetBytes(expected))) throw new InvalidOperationException("Nihai dış denetim PDF bütünlük doğrulamasını geçemedi.");
-        return new(content, fileName, actual);
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actual, reportIsNew); return new(content, fileName, actual);
     }
 
     private static byte[] Build(ExternalAuditDetailsResponse d, string snapshotHash)

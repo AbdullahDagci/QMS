@@ -139,6 +139,10 @@ public static class QmsPolicies
     public const string MbrApprove = "mbr.approve";
     public const string SpecializedView = "specialized.view";
     public const string SpecializedManage = "specialized.manage";
+    public const string FormView = "form.view";
+    public const string FormUse = "form.use";
+    public const string FormManage = "form.manage";
+    public const string FormApprove = "form.approve";
     public const string AdministrationManage = "administration.manage";
 
     public static readonly string[] All =
@@ -200,6 +204,10 @@ public static class QmsPolicies
         MbrApprove,
         SpecializedView,
         SpecializedManage,
+        FormView,
+        FormUse,
+        FormManage,
+        FormApprove,
         AdministrationManage,
     ];
 }

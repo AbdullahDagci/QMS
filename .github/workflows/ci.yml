@@ -1,0 +1,75 @@
+name: QMS quality gates
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet tool restore
+      - run: dotnet restore Qms.slnx
+      - run: dotnet build Qms.slnx --no-restore --configuration Release -warnaserror
+      - run: dotnet test Qms.slnx --no-build --configuration Release --collect:"XPlat Code Coverage"
+      - name: Verify EF model is represented by migrations
+        run: >-
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --project backend/src/Qms.Infrastructure/Qms.Infrastructure.csproj
+          --startup-project backend/src/Qms.Api/Qms.Api.csproj
+          --configuration Release --no-build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint -- --deny-warnings
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  container-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production Compose configuration
+        env:
+          QMS_DB_OWNER_PASSWORD_FILE: ./deploy/test-secrets/db-owner-password.txt
+          QMS_DB_APP_PASSWORD_FILE: ./deploy/test-secrets/db-app-password.txt
+          QMS_ALLOWED_HOSTS: qms.example.test
+          QMS_INTEGRITY_HMAC_KEY_FILE: ./deploy/test-secrets/integrity-key.txt
+          QMS_BOOTSTRAP_ADMIN_EMAIL: qms-admin@example.test
+          QMS_BOOTSTRAP_ADMIN_DISPLAY_NAME: CI Bootstrap Admin
+          QMS_BOOTSTRAP_ADMIN_PASSWORD_FILE: ./deploy/test-secrets/bootstrap-admin-password.txt
+          QMS_SMTP_HOST: smtp.example.test
+          QMS_SMTP_SENDER: qms@example.test
+          QMS_SMTP_PASSWORD_FILE: ./deploy/test-secrets/smtp-password.txt
+          QMS_TLS_CERT_PATH: ./deploy/test-certs/fullchain.pem
+          QMS_TLS_KEY_PATH: ./deploy/test-certs/privkey.pem
+        run: |
+          mkdir -p deploy/test-secrets deploy/test-certs
+          printf '%s' 'ci-only-owner-password' > deploy/test-secrets/db-owner-password.txt
+          printf '%s' 'ci-only-app-password' > deploy/test-secrets/db-app-password.txt
+          printf '%s' 'Y2ktb25seS1rZXktaGFzLWF0LWxlYXN0LTMydGVzLWxvbmc=' > deploy/test-secrets/integrity-key.txt
+          printf '%s' 'CiOnly.Bootstrap!2026' > deploy/test-secrets/bootstrap-admin-password.txt
+          printf '%s' 'ci-only-smtp-password' > deploy/test-secrets/smtp-password.txt
+          touch deploy/test-certs/fullchain.pem deploy/test-certs/privkey.pem
+          docker compose -f deploy/docker-compose.yml config --quiet
+      - name: Validate operational shell scripts
+        run: bash -n deploy/init-runtime-role.sh deploy/backup.sh deploy/restore.sh

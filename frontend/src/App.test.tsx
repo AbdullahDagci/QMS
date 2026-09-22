@@ -4,6 +4,21 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
+vi.mock('./security/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./security/AuthContext')>()
+  return {
+    ...actual,
+    useAuth: () => ({
+      authenticated: true,
+      loading: false,
+      user: { id: 'test', displayName: 'Test Kullanıcı', profile: 'test', roles: [], permissions: [], availableProfiles: [] },
+      can: () => true,
+      refresh: async () => undefined,
+      logout: async () => undefined,
+    }),
+  }
+})
+
 describe('App', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/')
@@ -24,7 +39,26 @@ describe('App', () => {
     expect(screen.getByText('Kalite kontrol merkezi')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Dashboard/ })).toBeInTheDocument()
     expect(screen.getByText('Sapma Yönetimi')).toBeInTheDocument()
+    expect(screen.getByText('Elektronik Formlar')).toBeInTheDocument()
     expect(screen.getByText('Tedarikçi Değerlendirme')).toBeInTheDocument()
+  })
+
+  it('opens the no-code electronic form workspace', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString()
+      if (url.endsWith('/api/v1/electronic-forms/definitions') || url.endsWith('/api/v1/electronic-forms/records')) {
+        return Response.json([])
+      }
+      return new Response(null, { status: 404 })
+    }))
+    window.history.pushState({}, '', '/forms')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(<QueryClientProvider client={queryClient}><App /></QueryClientProvider>)
+
+    expect(await screen.findByRole('heading', { name: 'Elektronik Formlar' })).toBeInTheDocument()
+    expect(await screen.findByText('İlk elektronik formunuzu oluşturun')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Yeni form' })).toBeInTheDocument()
   })
 
   it('opens the deviation lifecycle details from the work list', async () => {

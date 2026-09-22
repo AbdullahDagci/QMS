@@ -13,6 +13,7 @@ using Qms.Domain.AuditTrail;
 using Qms.Domain.Notifications;
 using Qms.Domain.QualityRecords;
 using Qms.Domain.RiskManagement;
+using Qms.Infrastructure.Security;
 using Qms.Domain.Workflows;
 using Qms.Infrastructure.Persistence;
 
@@ -136,7 +137,7 @@ public sealed class RiskManagementService(
             throw new ArgumentException("Sayfa geçersizdir.");
         var q =
             from x in db.RiskAssessments.AsNoTracking()
-            join qr in db.QualityRecords.AsNoTracking() on x.QualityRecordId equals qr.Id
+            join qr in db.VisibleQualityRecords(user) on x.QualityRecordId equals qr.Id
             select new Row { Risk = x, Number = qr.RecordNumber };
         foreach (var f in r.Filters ?? [])
         {
@@ -196,8 +197,9 @@ public sealed class RiskManagementService(
         if (x is null)
             return null;
         var qr = await db
-            .QualityRecords.AsNoTracking()
-            .SingleAsync(q => q.Id == x.QualityRecordId, ct);
+            .VisibleQualityRecords(user)
+            .SingleOrDefaultAsync(q => q.Id == x.QualityRecordId, ct);
+        if (qr is null) return null;
         var ev = await db
             .AuditEvents.AsNoTracking()
             .Where(e => e.AggregateType == "RiskAssessment" && e.AggregateId == id)
@@ -544,7 +546,8 @@ public sealed class RiskManagementService(
     }
 
     private Task<RiskAssessment?> Load(Guid id, CancellationToken ct) =>
-        db.RiskAssessments.Include(x => x.Items).SingleOrDefaultAsync(x => x.Id == id, ct);
+        db.RiskAssessments.Include(x => x.Items).SingleOrDefaultAsync(x => x.Id == id
+            && db.VisibleQualityRecords(user).Any(record => record.Id == x.QualityRecordId), ct);
 
     private static IReadOnlyList<RiskTransitionResponse> Transitions(RiskAssessmentStatus s) =>
         s switch
@@ -742,7 +745,7 @@ public sealed class RiskManagementService(
             user.Id,
             user.DisplayName,
             now,
-            Guid.CreateVersion7().ToString(),
+            Qms.Infrastructure.Integrity.AuditCorrelation.Current,
             JsonSerializer.SerializeToDocument(payload),
             reason
         );

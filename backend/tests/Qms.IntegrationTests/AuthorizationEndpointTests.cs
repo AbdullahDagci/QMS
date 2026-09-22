@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Qms.Application.Administration;
 using Qms.Application.Security;
 using Qms.Contracts.Administration;
@@ -103,6 +105,23 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
     }
 
     [Fact]
+    public async Task ViewerProfile_CanUsePublishedFormsButCannotDesignThem()
+    {
+        using var client = CreateClient("viewer");
+        var user = await client.GetFromJsonAsync<JsonDocument>("/api/v1/auth/me");
+        var permissions = user!.RootElement.GetProperty("permissions").EnumerateArray()
+            .Select(item => item.GetString()).ToArray();
+
+        var response = await client.PostAsJsonAsync("/api/v1/electronic-forms/definitions", new { });
+
+        Assert.Contains(QmsPolicies.FormView, permissions);
+        Assert.Contains(QmsPolicies.FormUse, permissions);
+        Assert.DoesNotContain(QmsPolicies.FormManage, permissions);
+        Assert.DoesNotContain(QmsPolicies.FormApprove, permissions);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AdministratorProfile_CanOpenAccessAdministration()
     {
         await using var isolatedFactory = factory.WithWebHostBuilder(builder =>
@@ -117,6 +136,28 @@ public sealed class AuthorizationEndpointTests : IClassFixture<SystemInfoApiFact
         var response = await client.GetAsync("/api/v1/admin/access/overview");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Production_DoesNotAcceptDevelopmentProfileHeader()
+    {
+        await using var productionFactory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.UseSetting("AllowedHosts", "localhost");
+            builder.UseSetting("ConnectionStrings:QmsDatabase", "Host=localhost;Database=qms;Username=qms;Password=test-only");
+            builder.UseSetting("RecordIntegrity:HmacKey", "dGVzdC1vbmx5LWludGVncml0eS1rZXktaXMtbG9uZy1lbm91Z2gh");
+            builder.UseSetting("FileStorage:MalwareScanning:Host", "scanner.test");
+        });
+        using var client = productionFactory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.Add("X-QMS-Profile", "admin");
+
+        var response = await client.GetAsync("/api/v1/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     private HttpClient CreateClient(string profile)

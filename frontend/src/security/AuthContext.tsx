@@ -1,16 +1,12 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  currentProfileKey,
-  QMS_PROFILE_KEY,
-  QMS_SESSION_KEY,
-} from "../api/http";
 import {
   getCurrentUser,
   logout as logoutRequest,
@@ -75,6 +71,10 @@ export const Permissions = {
   mbrApprove: "mbr.approve",
   specializedView: "specialized.view",
   specializedManage: "specialized.manage",
+  formView: "form.view",
+  formUse: "form.use",
+  formManage: "form.manage",
+  formApprove: "form.approve",
   administrationManage: "administration.manage",
 } as const;
 
@@ -91,7 +91,6 @@ interface AuthValue {
   user: CurrentUser;
   loading: boolean;
   can: (permission: string) => boolean;
-  selectProfile: (profile: string) => void;
   authenticated: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -100,53 +99,48 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue>({
   user: fallbackUser,
   loading: false,
-  can: () => true,
-  selectProfile: () => undefined,
-  authenticated: true,
+  can: () => false,
+  authenticated: false,
   refresh: async () => undefined,
   logout: async () => undefined,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState(currentProfileKey);
-  const [authenticated, setAuthenticated] = useState(() =>
-    Boolean(window.localStorage.getItem(QMS_SESSION_KEY)),
-  );
+  const [loggedOut, setLoggedOut] = useState(false);
   const queryClient = useQueryClient();
   const currentUser = useQuery({
-    queryKey: ["current-user", profile],
+    queryKey: ["current-user"],
     queryFn: ({ signal }) => getCurrentUser(signal),
     retry: false,
   });
   const user = currentUser.data ?? fallbackUser;
+  const authenticated = !loggedOut && currentUser.isSuccess;
+  useEffect(() => {
+    const handleUnauthorized = () => setLoggedOut(true);
+    window.addEventListener("qms:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("qms:unauthorized", handleUnauthorized);
+  }, []);
   const value = useMemo<AuthValue>(
     () => ({
       user,
-      loading: currentUser.isLoading,
+      loading: currentUser.isLoading || currentUser.isFetching,
       can: (permission) => user.permissions.includes(permission),
-      selectProfile: (next) => {
-        window.localStorage.setItem(QMS_PROFILE_KEY, next);
-        setProfile(next);
-        // Record details contain user-specific workflow capabilities. Do not
-        // carry an assignee's cached transitions into another test profile.
-        void queryClient.resetQueries();
-      },
       authenticated,
       refresh: async () => {
-        setAuthenticated(Boolean(window.localStorage.getItem(QMS_SESSION_KEY)));
-        // A successful login changes the authorization context for every
-        // request, not only /me. Refetch all active data with the new token.
-        await queryClient.resetQueries();
+        setLoggedOut(false);
+        await queryClient.resetQueries({ queryKey: ["current-user"] });
+        const result = await currentUser.refetch();
+        if (result.error) throw result.error;
       },
       logout: async () => {
         await logoutRequest();
-        setAuthenticated(false);
+        setLoggedOut(true);
         // Prevent permission-sensitive responses (available transitions,
         // assignments, notifications) from leaking into the next session.
         queryClient.clear();
       },
     }),
-    [user, currentUser.isLoading, queryClient, authenticated],
+    [user, currentUser, queryClient, authenticated],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

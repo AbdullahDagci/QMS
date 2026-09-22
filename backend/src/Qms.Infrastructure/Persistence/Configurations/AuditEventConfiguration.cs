@@ -17,6 +17,9 @@ public sealed class AuditEventConfiguration : IEntityTypeConfiguration<AuditEven
         builder.Property(auditEvent => auditEvent.CorrelationId).HasMaxLength(128).IsRequired();
         builder.Property(auditEvent => auditEvent.Reason).HasMaxLength(2000);
         builder.Property(auditEvent => auditEvent.Payload).HasColumnType("jsonb").IsRequired();
+        builder.Property(auditEvent => auditEvent.PreviousIntegrityHash).HasMaxLength(64).IsRequired();
+        builder.Property(auditEvent => auditEvent.IntegrityHash).HasMaxLength(64).IsRequired();
+        builder.Property(auditEvent => auditEvent.IntegrityMac).HasMaxLength(128).IsRequired();
 
         builder.HasIndex(auditEvent => new
         {

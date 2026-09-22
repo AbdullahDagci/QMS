@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 
 namespace Qms.Domain.SpecializedRecords;
 
@@ -28,6 +29,7 @@ public sealed class SpecializedRecord
     public string ScopeName { get; private set; } = "";
     public string Reference { get; private set; } = "";
     public string Description { get; private set; } = "";
+    public int SchemaVersion { get; private set; }
     public string StructuredDataJson { get; private set; } = "{}";
     public DateTimeOffset DueAtUtc { get; private set; }
     public Guid OwnerUserId { get; private set; }
@@ -96,7 +98,11 @@ public sealed class SpecializedRecord
             }
         )
             Required(value);
-        using var _ = JsonDocument.Parse(dataJson);
+        if (Encoding.UTF8.GetByteCount(dataJson) > 32 * 1024)
+            throw new ArgumentException("Yapılandırılmış kayıt verisi 32 KB sınırını aşamaz.");
+        using var document = JsonDocument.Parse(dataJson);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("Yapılandırılmış kayıt verisi JSON nesnesi olmalıdır.");
         if (due <= now)
             throw new ArgumentException("Hedef tarih gelecekte olmalıdır.");
         return new SpecializedRecord
@@ -113,6 +119,7 @@ public sealed class SpecializedRecord
             ScopeName = scopeName.Trim(),
             Reference = reference.Trim(),
             Description = description.Trim(),
+            SchemaVersion = 1,
             StructuredDataJson = dataJson,
             DueAtUtc = due,
             OwnerUserId = ownerId,
@@ -165,6 +172,8 @@ public sealed class SpecializedRecord
 
     private void ValidateModuleData()
     {
+        if (SchemaVersion != 1)
+            throw new InvalidOperationException($"Desteklenmeyen uzmanlık kayıt şeması: v{SchemaVersion}.");
         using var doc = JsonDocument.Parse(StructuredDataJson);
         var root = doc.RootElement;
         string Text(string name) =>

@@ -26,6 +26,8 @@ public sealed class ElectronicSignature
 
     public string ContentHash { get; private set; } = string.Empty;
 
+    public string IntegrityMac { get; private set; } = string.Empty;
+
     public string ProviderType { get; private set; } = "Legacy";
 
     public string SignatureMethod { get; private set; } = "LegacyApplicationSignature";
@@ -50,6 +52,7 @@ public sealed class ElectronicSignature
         DateTimeOffset signedAtUtc,
         JsonDocument signedSnapshot,
         string contentHash,
+        string integrityMac,
         string? comment = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(aggregateType);
@@ -71,6 +74,7 @@ public sealed class ElectronicSignature
         signature.AggregateId = aggregateId;
         signature.Operation = operation.Trim().ToLowerInvariant();
         signature.SignedSnapshot = signedSnapshot;
+        signature.IntegrityMac = integrityMac;
         return signature;
     }
 

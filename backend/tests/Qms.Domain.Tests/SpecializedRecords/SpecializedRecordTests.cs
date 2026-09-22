@@ -61,6 +61,20 @@ public sealed class SpecializedRecordTests
         Assert.Throws<InvalidOperationException>(() => Create("M.16", data, now).Submit(1, now));
     }
 
+    [Fact]
+    public void Structured_payload_is_versioned_and_rejects_unbounded_or_non_object_json()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var record = Create("M.16",
+            "{\"evaluationPeriod\":\"2026-H1\",\"score\":88,\"qualityScore\":92,\"deliveryScore\":84,\"qualificationDecision\":\"Approved\"}",
+            now);
+
+        Assert.Equal(1, record.SchemaVersion);
+        Assert.Throws<ArgumentException>(() => Create("M.16", "[]", now));
+        Assert.Throws<ArgumentException>(() => Create("M.16",
+            $"{{\"value\":\"{new string('x', 33 * 1024)}\"}}", now));
+    }
+
     private static SpecializedRecord Create(string module, string data, DateTimeOffset now) =>
         SpecializedRecord.Create(
             Guid.NewGuid(),

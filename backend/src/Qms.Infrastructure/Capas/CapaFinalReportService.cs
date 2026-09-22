@@ -24,7 +24,7 @@ public sealed class CapaFinalReportService(IConfiguration configuration) : ICapa
         var directory = Path.Combine(root, "capas", details.Record.Id.ToString("N")); Directory.CreateDirectory(directory);
         var safeNumber = string.Concat(details.Record.RecordNumber.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
         var fileName = $"{safeNumber}-nihai-kayit-v{details.Record.Version}.pdf"; var path = Path.Combine(directory, fileName); var hashPath = path + ".sha256";
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFontResolver(); var snapshotHash = SnapshotHash(details); var content = Build(details, snapshotHash);
             try { await File.WriteAllBytesAsync(path, content, cancellationToken); } catch (IOException) when (File.Exists(path)) { }
@@ -34,7 +34,7 @@ public sealed class CapaFinalReportService(IConfiguration configuration) : ICapa
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken); var actual = Convert.ToHexStringLower(SHA256.HashData(bytes));
         var expected = (await File.ReadAllTextAsync(hashPath, cancellationToken)).Trim();
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(actual), Encoding.ASCII.GetBytes(expected))) throw new InvalidOperationException("Arşivlenmiş nihai PDF bütünlük doğrulamasını geçemedi.");
-        return new(bytes, fileName, actual);
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actual, reportIsNew); return new(bytes, fileName, actual);
     }
 
     private static byte[] Build(CapaDetailsResponse details, string snapshotHash)

@@ -4,13 +4,17 @@ using Microsoft.Extensions.Configuration;
 using Qms.Application.Security;
 using Qms.Domain.Organization;
 using Qms.Domain.Workflows;
+using Qms.Domain.AuditTrail;
 using Qms.Infrastructure.Persistence;
+using System.Text.Json;
 
 namespace Qms.Infrastructure.Identity;
 
 public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager, IConfiguration configuration)
 {
-    public async Task SeedAsync(CancellationToken cancellationToken = default)
+    public async Task SeedAsync(
+        bool includeDevelopmentProfiles,
+        CancellationToken cancellationToken = default)
     {
         foreach (var roleName in QmsRoles.All)
         {
@@ -54,49 +58,82 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
 
         var departments = await dbContext.Departments.ToDictionaryAsync(item => item.Code, cancellationToken);
         var positions = await dbContext.Positions.ToDictionaryAsync(item => item.Code, cancellationToken);
-        foreach (var profile in DevelopmentProfiles.All)
+        if (!includeDevelopmentProfiles && !await dbContext.Users.AnyAsync(cancellationToken))
         {
-            var stored = await userManager.Users.SingleOrDefaultAsync(user => user.ProfileKey == profile.Key, cancellationToken);
-            if (stored is null)
+            var email = configuration["BootstrapAdmin:Email"]?.Trim();
+            var displayName = configuration["BootstrapAdmin:DisplayName"]?.Trim();
+            var password = configuration["BootstrapAdmin:Password"];
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(displayName)
+                || string.IsNullOrWhiteSpace(password))
+                throw new InvalidOperationException(
+                    "Boş production kullanıcı tabanı için BootstrapAdmin email, görünen ad ve parola secret'ı zorunludur.");
+            var admin = new ApplicationUser
             {
-                stored = new ApplicationUser
-                {
-                    Id = profile.UserId,
-                    UserName = $"{profile.Key}@qms.local",
-                    Email = $"{profile.Key}@qms.local",
-                    EmailConfirmed = true,
-                    DisplayName = profile.DisplayName,
-                    ProfileKey = profile.Key,
-                    DepartmentId = departments[profile.DepartmentCode].Id,
-                    IsActive = true
-                };
-                Ensure(await userManager.CreateAsync(stored), $"{profile.DisplayName} kullanıcısı oluşturulamadı");
-            }
-
-            if (stored.DisplayName != profile.DisplayName) { stored.DisplayName = profile.DisplayName; Ensure(await userManager.UpdateAsync(stored), $"{profile.DisplayName} adı güncellenemedi"); }
-
-            var currentRoles = await userManager.GetRolesAsync(stored);
-            var rolesToRemove = currentRoles.Except(profile.Roles).ToArray();
-            if (rolesToRemove.Length > 0) Ensure(await userManager.RemoveFromRolesAsync(stored, rolesToRemove), $"{profile.DisplayName} eski rolleri kaldırılamadı");
-            var rolesToAdd = profile.Roles.Except(currentRoles).ToArray();
-            if (rolesToAdd.Length > 0) Ensure(await userManager.AddToRolesAsync(stored, rolesToAdd), $"{profile.DisplayName} rolleri atanamadı");
-            if (!await userManager.HasPasswordAsync(stored))
-                Ensure(await userManager.AddPasswordAsync(stored, configuration["DevelopmentAuth:SignaturePassword"] ?? "Qms.Dev!2026"), $"{profile.DisplayName} geliştirme imza parolası oluşturulamadı");
-
-            if (!await dbContext.UserPositions.AnyAsync(item => item.UserId == stored.Id && item.EndsAtUtc == null, cancellationToken))
-            {
-                var positionCode = profile.Key switch
-                {
-                    "quality" or "quality-reviewer" => "QA_SPECIALIST", "approver" => "QA_APPROVER", "qualified-person" => "QP",
-                    "manager" => "DEPT_MANAGER", "investigator" => "INVESTIGATOR", "action-owner" => "ACTION_OWNER",
-                    "reporter" => "REPORTER", "regulatory" => "REG_AFFAIRS", "document-controller" => "DOC_CONTROLLER",
-                    "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", "validation-reviewer" or "engineering-reviewer" or "it-reviewer" => "DEPT_MANAGER",
-                    "learner" => "EMPLOYEE", "trainer" => "TRAINER", _ => "QA_SPECIALIST"
-                };
-                dbContext.UserPositions.Add(UserPosition.Create(stored.Id, positions[positionCode].Id, stored.DepartmentId!.Value, true, DateTimeOffset.UtcNow));
-            }
+                Id = Guid.CreateVersion7(),
+                UserName = email,
+                Email = email,
+                EmailConfirmed = true,
+                DisplayName = displayName,
+                DepartmentId = departments["SYS"].Id,
+                IsActive = true
+            };
+            Ensure(await userManager.CreateAsync(admin, password), "İlk production yöneticisi oluşturulamadı");
+            Ensure(await userManager.AddToRoleAsync(admin, QmsRoles.Administrator),
+                "İlk production yöneticisi rolü atanamadı");
+            dbContext.UserPositions.Add(UserPosition.Create(admin.Id, positions["SYSTEM_ADMIN"].Id,
+                departments["SYS"].Id, true, DateTimeOffset.UtcNow));
+            dbContext.AuditEvents.Add(AuditEvent.Create("ApplicationUser", admin.Id, 1,
+                "BootstrapAdministratorCreated", Guid.Empty, "QMS Migrator", DateTimeOffset.UtcNow,
+                Qms.Infrastructure.Integrity.AuditCorrelation.Current,
+                JsonSerializer.SerializeToDocument(new { admin.Email, admin.DisplayName })));
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (includeDevelopmentProfiles)
+        {
+            foreach (var profile in DevelopmentProfiles.All)
+            {
+                var stored = await userManager.Users.SingleOrDefaultAsync(user => user.ProfileKey == profile.Key, cancellationToken);
+                if (stored is null)
+                {
+                    stored = new ApplicationUser
+                    {
+                        Id = profile.UserId,
+                        UserName = $"{profile.Key}@qms.local",
+                        Email = $"{profile.Key}@qms.local",
+                        EmailConfirmed = true,
+                        DisplayName = profile.DisplayName,
+                        ProfileKey = profile.Key,
+                        DepartmentId = departments[profile.DepartmentCode].Id,
+                        IsActive = true
+                    };
+                    Ensure(await userManager.CreateAsync(stored), $"{profile.DisplayName} kullanıcısı oluşturulamadı");
+                }
+
+                if (stored.DisplayName != profile.DisplayName) { stored.DisplayName = profile.DisplayName; Ensure(await userManager.UpdateAsync(stored), $"{profile.DisplayName} adı güncellenemedi"); }
+
+                var currentRoles = await userManager.GetRolesAsync(stored);
+                var rolesToRemove = currentRoles.Except(profile.Roles).ToArray();
+                if (rolesToRemove.Length > 0) Ensure(await userManager.RemoveFromRolesAsync(stored, rolesToRemove), $"{profile.DisplayName} eski rolleri kaldırılamadı");
+                var rolesToAdd = profile.Roles.Except(currentRoles).ToArray();
+                if (rolesToAdd.Length > 0) Ensure(await userManager.AddToRolesAsync(stored, rolesToAdd), $"{profile.DisplayName} rolleri atanamadı");
+                if (!await userManager.HasPasswordAsync(stored))
+                    Ensure(await userManager.AddPasswordAsync(stored, configuration["DevelopmentAuth:SignaturePassword"] ?? "Qms.Dev!2026"), $"{profile.DisplayName} geliştirme imza parolası oluşturulamadı");
+
+                if (!await dbContext.UserPositions.AnyAsync(item => item.UserId == stored.Id && item.EndsAtUtc == null, cancellationToken))
+                {
+                    var positionCode = profile.Key switch
+                    {
+                        "quality" or "quality-reviewer" => "QA_SPECIALIST", "approver" => "QA_APPROVER", "qualified-person" => "QP",
+                        "manager" => "DEPT_MANAGER", "investigator" => "INVESTIGATOR", "action-owner" => "ACTION_OWNER",
+                        "reporter" => "REPORTER", "regulatory" => "REG_AFFAIRS", "document-controller" => "DOC_CONTROLLER",
+                        "training-coordinator" => "TRAINING_COORDINATOR", "admin" => "SYSTEM_ADMIN", "validation-reviewer" or "engineering-reviewer" or "it-reviewer" => "DEPT_MANAGER",
+                        "learner" => "EMPLOYEE", "trainer" => "TRAINER", _ => "QA_SPECIALIST"
+                    };
+                    dbContext.UserPositions.Add(UserPosition.Create(stored.Id, positions[positionCode].Id, stored.DepartmentId!.Value, true, DateTimeOffset.UtcNow));
+                }
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         var activeAssessmentTasks = await dbContext.WorkflowTaskAssignments.Where(item => item.AggregateType == "ChangeControl" && item.Status == WorkflowTaskStatus.Active && item.TaskRole.StartsWith("Assessment:")).ToListAsync(cancellationToken);
         foreach (var task in activeAssessmentTasks)
@@ -111,14 +148,17 @@ public sealed class QmsIdentitySeeder(QmsDbContext dbContext, UserManager<Applic
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        var managerProfiles = new Dictionary<string, string> { ["URT"] = "manager", ["VAL"] = "validation-reviewer", ["MUH"] = "engineering-reviewer", ["BT"] = "it-reviewer" };
-        foreach (var (departmentCode, profileKey) in managerProfiles)
+        if (includeDevelopmentProfiles)
         {
-            var department = departments[departmentCode];
-            var managerId = await dbContext.Users.Where(item => item.ProfileKey == profileKey).Select(item => (Guid?)item.Id).SingleOrDefaultAsync(cancellationToken);
-            if (managerId.HasValue && department.ManagerUserId != managerId) department.Update(department.Name, department.ParentDepartmentId, managerId, department.IsActive);
+            var managerProfiles = new Dictionary<string, string> { ["URT"] = "manager", ["VAL"] = "validation-reviewer", ["MUH"] = "engineering-reviewer", ["BT"] = "it-reviewer" };
+            foreach (var (departmentCode, profileKey) in managerProfiles)
+            {
+                var department = departments[departmentCode];
+                var managerId = await dbContext.Users.Where(item => item.ProfileKey == profileKey).Select(item => (Guid?)item.Id).SingleOrDefaultAsync(cancellationToken);
+                if (managerId.HasValue && department.ManagerUserId != managerId) department.Update(department.Name, department.ParentDepartmentId, managerId, department.IsActive);
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
-        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static void Ensure(IdentityResult result, string message)

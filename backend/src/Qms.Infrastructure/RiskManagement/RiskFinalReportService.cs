@@ -33,7 +33,7 @@ public sealed class RiskFinalReportService(IConfiguration configuration) : IRisk
         var name = $"{d.Record.RecordNumber}-nihai-fmea-v{d.Record.Version}.pdf";
         var path = Path.Combine(dir, name);
         var hp = path + ".sha256";
-        if (!File.Exists(path))
+        var reportIsNew = !File.Exists(path); if (reportIsNew)
         {
             EnsureFont();
             var bytes = Build(d, Snapshot(d));
@@ -55,7 +55,7 @@ public sealed class RiskFinalReportService(IConfiguration configuration) : IRisk
             )
         )
             throw new InvalidOperationException("Nihai M.11 PDF bütünlük kontrolünü geçemedi.");
-        return new(content, name, actual);
+        await Qms.Infrastructure.Integrity.FinalReportIntegrity.SealNewOrVerifyAsync(configuration, path, actual, reportIsNew); return new(content, name, actual);
     }
 
     private static byte[] Build(RiskDetailsResponse d, string snapshot)

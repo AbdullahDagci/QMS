@@ -17,6 +17,7 @@ public sealed class QmsExceptionHandler(
         var (status, title) = exception switch
         {
             QmsForbiddenException => (StatusCodes.Status403Forbidden, "Bu işlem için yetkiniz bulunmuyor"),
+            KeyNotFoundException => (StatusCodes.Status404NotFound, "Kayıt bulunamadı"),
             ArgumentException => (StatusCodes.Status400BadRequest, "İstek doğrulanamadı"),
             InvalidOperationException => (StatusCodes.Status409Conflict, "İşlem mevcut durumla çakışıyor"),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Kayıt başka bir kullanıcı tarafından değiştirildi"),
@@ -40,7 +41,9 @@ public sealed class QmsExceptionHandler(
             {
                 Status = status,
                 Title = title,
-                Detail = exception.Message,
+                Detail = status >= StatusCodes.Status500InternalServerError
+                    ? "İşlem tamamlanamadı. Destek ekibine başvururken istek kimliğini paylaşın."
+                    : exception.Message,
                 Instance = httpContext.Request.Path
             },
             Exception = exception

@@ -9,13 +9,16 @@ using Qms.Application.Security;
 using Qms.Domain.ElectronicSignatures;
 using Qms.Infrastructure.Identity;
 using Qms.Infrastructure.Persistence;
+using Qms.Infrastructure.Integrity;
+using Qms.Infrastructure.Security;
 
 namespace Qms.Infrastructure.ElectronicSignatures;
 
 public sealed class ElectronicSignatureService(
     QmsDbContext db,
     ICurrentUser currentUser,
-    UserManager<ApplicationUser> userManager) : IElectronicSignatureService
+    UserManager<ApplicationUser> userManager,
+    RecordIntegrityService? integrity = null) : IElectronicSignatureService
 {
     private static readonly JsonSerializerOptions SnapshotOptions = new()
     {
@@ -68,6 +71,9 @@ public sealed class ElectronicSignatureService(
         };
         var snapshot = Canonicalize(JsonSerializer.SerializeToDocument(envelope, SnapshotOptions));
         var hash = Hash(snapshot);
+        var macPayload = RecordIntegrityService.SignaturePayload(qualityRecordId, recordVersion, currentUser.Id,
+            aggregateType, aggregateId, operation, meaning, signedAtUtc, hash);
+        var integrityMac = integrity?.Mac(macPayload) ?? string.Empty;
 
         return ElectronicSignature.CreateInternal(
             qualityRecordId,
@@ -81,6 +87,7 @@ public sealed class ElectronicSignatureService(
             signedAtUtc,
             snapshot,
             hash,
+            integrityMac,
             comment);
     }
 
@@ -91,6 +98,9 @@ public sealed class ElectronicSignatureService(
         var signature = await db.ElectronicSignatures.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == signatureId, cancellationToken)
             ?? throw new KeyNotFoundException("Elektronik imza bulunamadı.");
+        if (!await db.VisibleQualityRecords(currentUser)
+                .AnyAsync(item => item.Id == signature.QualityRecordId, cancellationToken))
+            throw new KeyNotFoundException("Elektronik imza bulunamadı.");
 
         if (signature.ProviderType.Equals("Legacy", StringComparison.OrdinalIgnoreCase))
             return new ElectronicSignatureVerification(
@@ -109,7 +119,10 @@ public sealed class ElectronicSignatureService(
                 "Eski imza kaydı tam içerik snapshot'ı içermediği için yeni bütünlük doğrulamasına tabi değildir.");
 
         var actualHash = Hash(Canonicalize(signature.SignedSnapshot));
-        var valid = FixedTimeEquals(actualHash, signature.ContentHash);
+        var hashValid = FixedTimeEquals(actualHash, signature.ContentHash);
+        var macPayload = RecordIntegrityService.SignaturePayload(signature);
+        var macValid = integrity?.VerifyMac(macPayload, signature.IntegrityMac) == true;
+        var valid = hashValid && macValid;
         return new ElectronicSignatureVerification(
             signature.Id,
             valid,
@@ -124,8 +137,10 @@ public sealed class ElectronicSignatureService(
             signature.SignedAtUtc,
             signature.ContentHash,
             valid
-                ? "İmzalı kayıt snapshot'ı değiştirilmemiştir."
-                : "İmzalı kayıt snapshot'ı bütünlük doğrulamasını geçemedi.");
+                ? "İmzalı kayıt snapshot'ı ve anahtarlı bütünlük mührü doğrulandı."
+                : !hashValid
+                    ? "İmzalı kayıt snapshot'ı bütünlük doğrulamasını geçemedi."
+                    : "İmzanın anahtarlı bütünlük mührü doğrulanamadı.");
     }
 
     internal static JsonDocument Canonicalize(JsonDocument document)
@@ -181,4 +196,5 @@ public sealed class ElectronicSignatureService(
         var b = Encoding.ASCII.GetBytes(right.ToLowerInvariant());
         return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
     }
+
 }

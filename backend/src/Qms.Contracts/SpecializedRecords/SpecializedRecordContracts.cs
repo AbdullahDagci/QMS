@@ -83,7 +83,8 @@ public sealed record SpecializedRecordResponse(
     string Status,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
-    long Version
+    long Version,
+    int SchemaVersion = 1
 );
 
 public sealed record SpecializedEventResponse(

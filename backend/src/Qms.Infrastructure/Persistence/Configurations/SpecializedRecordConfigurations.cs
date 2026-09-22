@@ -20,6 +20,7 @@ public sealed class SpecializedRecordConfiguration : IEntityTypeConfiguration<Sp
         b.Property(x => x.ScopeName).HasMaxLength(240);
         b.Property(x => x.Reference).HasMaxLength(500);
         b.Property(x => x.Description).HasMaxLength(6000);
+        b.Property(x => x.SchemaVersion).HasDefaultValue(1);
         b.Property(x => x.StructuredDataJson).HasColumnType("jsonb");
         b.Property(x => x.Owner).HasMaxLength(200);
         b.Property(x => x.Reviewer).HasMaxLength(200);
