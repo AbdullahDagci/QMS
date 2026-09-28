@@ -11,7 +11,9 @@ public static class RecordVisibility
     public static IQueryable<QualityRecord> VisibleQualityRecords(this QmsDbContext db,
         ICurrentUser currentUser)
     {
-        var records = db.QualityRecords.AsNoTracking();
+        // AsNoTracking burada kullanılmaz: EF Core onu alt sorgudan tüm sorguya uygular ve bu filtreyle
+        // yüklenen aggregate'lerdeki değişiklikler sessizce kaydedilmez. Salt okunur çağıranlar kendisi ekler.
+        var records = db.QualityRecords.AsQueryable();
         if (currentUser.IsInRole(QmsRoles.Administrator)
             || currentUser.IsInRole(QmsRoles.QualityAssurance)) return records;
         var userId = currentUser.Id;
