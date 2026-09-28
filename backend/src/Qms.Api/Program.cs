@@ -28,7 +28,8 @@ if (!builder.Environment.IsDevelopment())
     var integrityKey = builder.Configuration["RecordIntegrity:HmacKey"];
     if (string.IsNullOrWhiteSpace(integrityKey))
         throw new InvalidOperationException("Üretimde RecordIntegrity:HmacKey zorunludur.");
-    if (string.IsNullOrWhiteSpace(builder.Configuration["FileStorage:MalwareScanning:Host"]))
+    if (builder.Configuration.GetValue("FileStorage:MalwareScanning:Required", true)
+        && string.IsNullOrWhiteSpace(builder.Configuration["FileStorage:MalwareScanning:Host"]))
         throw new InvalidOperationException("Üretimde zararlı yazılım tarama servisi zorunludur.");
     var retentionYears = builder.Configuration.GetValue("FileStorage:MinimumRetentionYears", 10);
     if (retentionYears is < 1 or > 100)
