@@ -57,6 +57,8 @@ import { ElectronicSignatureVerificationBadge } from "../../components/Electroni
 import { AuditTimeline } from "../../components/AuditTimeline";
 import { RecordAssignments } from "../../components/RecordAssignments";
 import { CapaCreateDialog } from "../capas/CapaWorkspace";
+import { NextAssigneeNotice } from "./NextAssigneeNotice";
+import { taskRoleLabel } from "./taskRoles";
 import { Permissions, useAuth } from "../../security/AuthContext";
 import { getWorkflowAssignments } from "../../api/access";
 
@@ -243,6 +245,13 @@ export function DeviationDetailsDialog({
                 icon={<GppMaybeRounded />}
                 label={`${classificationLabel(record.classification)} · RPN ${record.riskScore}`}
               />
+              {activeAssignment && (
+                <Chip
+                  className="status-glass-chip"
+                  icon={<AssignmentIndRounded />}
+                  label={`${taskRoleLabel(activeAssignment.taskRole)} · ${activeAssignment.assignedUserName}`}
+                />
+              )}
             </Stack>
           )}
         </Stack>
@@ -862,6 +871,14 @@ export function DeviationDetailsDialog({
                           Bu aşamadaki durum kararını vermek için Kalite Güvence
                           veya Onaylayan rolü gerekir.
                         </Alert>
+                      )}
+                    {can(Permissions.deviationManage) &&
+                      details.data.availableTransitions.length > 0 &&
+                      details.data.nextAssignee && (
+                        <NextAssigneeNotice
+                          nextAssignee={details.data.nextAssignee}
+                          when="Bu adım tamamlandığında"
+                        />
                       )}
                     {can(Permissions.deviationManage) &&
                       details.data.availableTransitions.map((item) => (

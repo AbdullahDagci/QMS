@@ -11,7 +11,15 @@ public sealed record DeviationDetailsResponse(
     IReadOnlyList<DeviationSignatureResponse> Signatures,
     IReadOnlyList<DeviationTransitionResponse> AvailableTransitions,
     bool CanAddInvestigation,
-    bool CanAddBatchImpact);
+    bool CanAddBatchImpact,
+    DeviationNextAssigneeResponse? NextAssignee = null);
+
+// Kayıt mevcut adımdan ilerletildiğinde görevin atama matrisine göre kime düşeceği; UserId boşsa kural yoktur.
+public sealed record DeviationNextAssigneeResponse(
+    string TaskRole,
+    Guid? UserId,
+    string? UserName,
+    string? DepartmentName);
 
 public sealed record DeviationSignatureResponse(Guid Id, long RecordVersion, Guid SignerUserId, string SignerName, string Meaning, DateTimeOffset SignedAtUtc, string ContentHash, string? Comment);
 

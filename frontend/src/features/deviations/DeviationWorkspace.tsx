@@ -44,6 +44,7 @@ import {
   createDeviation,
   createDeviationAssignmentRule,
   createDeviationType,
+  getDeviationDetails,
   getDeviationLookups,
   listDeviationTypes,
   listDeviationAssignmentRules,
@@ -56,6 +57,8 @@ import {
 } from "../../api/deviations";
 import { getAccessOverview } from "../../api/access";
 import { DeviationFilters } from "./DeviationFilters";
+import { NextAssigneeNotice } from "./NextAssigneeNotice";
+import { taskRoleOptions } from "./taskRoles";
 import {
   emptyDeviationFilters,
   toColumnFilters,
@@ -150,6 +153,12 @@ export function DeviationWorkspace() {
     queryKey: ["deviations", searchRequest],
     queryFn: ({ signal }) => searchDeviations(searchRequest, signal),
     placeholderData: (previous) => previous,
+    retry: false,
+  });
+  const submitPreview = useQuery({
+    queryKey: ["deviation-details", submitConfirmation?.id],
+    queryFn: ({ signal }) => getDeviationDetails(submitConfirmation!.id, signal),
+    enabled: Boolean(submitConfirmation),
     retry: false,
   });
   const submitMutation = useMutation({
@@ -385,6 +394,14 @@ export function DeviationWorkspace() {
             <Typography>{submitConfirmation?.recordNumber}</Typography>
             <Typography variant="body2">{submitConfirmation?.title}</Typography>
           </Box>
+          {submitPreview.data?.nextAssignee && (
+            <Box sx={{ mt: 2 }}>
+              <NextAssigneeNotice
+                nextAssignee={submitPreview.data.nextAssignee}
+                when="Gönderildiğinde"
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button
@@ -992,12 +1009,6 @@ function DeviationTypeSettingsDialog({
   );
 }
 
-const taskRoleOptions: Array<SelectOption<string>> = [
-  { value: "ProcessAuthority", label: "İşlem yetkilisi" },
-  { value: "Investigator", label: "Araştırmacı" },
-  { value: "Evaluator", label: "Değerlendiren" },
-  { value: "Approver", label: "Onaylayan" },
-];
 
 function DeviationAssignmentSettingsDialog({
   open,

@@ -119,6 +119,14 @@ export interface DeviationDetails {
   signatures: Array<{ id: string; recordVersion: number; signerUserId: string; signerName: string; meaning: string; signedAtUtc: string; contentHash: string; comment: string | null }>
   canAddInvestigation: boolean
   canAddBatchImpact: boolean
+  nextAssignee: DeviationNextAssignee | null
+}
+
+export interface DeviationNextAssignee {
+  taskRole: string
+  userId: string | null
+  userName: string | null
+  departmentName: string | null
 }
 
 export interface ColumnFilter {

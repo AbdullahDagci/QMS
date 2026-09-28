@@ -260,7 +260,8 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
             signatures,
             canTransition ? GetAvailableTransitions(record.Status) : [],
             canInvestigate,
-            canAssessBatch);
+            canAssessBatch,
+            await PreviewNextAssigneeAsync(id, cancellationToken));
     }
 
     public async Task<DeviationResponse> CreateAsync(
@@ -710,6 +711,22 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
 
     private async Task AssignRoleAsync(Deviation deviation, string taskRole, Guid? excludedUserId, DateTimeOffset now, CancellationToken ct)
     {
+        var assignee = await ResolveAssigneeAsync(deviation, taskRole, excludedUserId, ct)
+            ?? throw new InvalidOperationException($"{taskRole} görevi için sapma türü, bölüm ve RPN ile eşleşen etkin M.01 atama kuralı bulunamadı.");
+        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, taskRole, assignee.UserId, assignee.DepartmentId, now, deviation.TargetDateUtc, assignedUserNameSnapshot: assignee.DisplayName, assignedDepartmentNameSnapshot: assignee.DepartmentName));
+        var recordNumber = await dbContext.VisibleQualityRecords(currentUser).Where(x => x.Id == deviation.QualityRecordId).Select(x => x.RecordNumber).SingleAsync(ct);
+        dbContext.UserNotifications.Add(UserNotification.Create(
+            assignee.UserId,
+            "M.01",
+            "Yeni sapma görevi atandı",
+            $"{recordNumber} için {TaskRoleLabel(taskRole)} görevi size atandı.",
+            $"/modules/deviations?open={deviation.Id}",
+            now));
+    }
+
+    private async Task<(Guid UserId, string DisplayName, Guid? DepartmentId, string? DepartmentName)?> ResolveAssigneeAsync(
+        Deviation deviation, string taskRole, Guid? excludedUserId, CancellationToken ct)
+    {
         var globalRole = RequiredGlobalRole(taskRole);
         var rule = await (from candidate in dbContext.DeviationAssignmentRules.AsNoTracking()
                           join user in dbContext.Users.AsNoTracking() on candidate.AssignedUserId equals user.Id
@@ -721,22 +738,40 @@ public sealed class DeviationService(QmsDbContext dbContext, TimeProvider timePr
                                 && (candidate.MinimumRiskScore == null || deviation.RiskScore >= candidate.MinimumRiskScore)
                           orderby (candidate.DetectedDepartment != null ? 1 : 0) + (candidate.DeviationType != null ? 1 : 0) + (candidate.MinimumRiskScore != null ? 1 : 0) descending, candidate.Priority descending
                           select candidate).FirstOrDefaultAsync(ct);
-        if (rule is null) throw new InvalidOperationException($"{taskRole} görevi için sapma türü, bölüm ve RPN ile eşleşen etkin M.01 atama kuralı bulunamadı.");
+        if (rule is null) return null;
         var userId = rule.AssignedUserId;
         var assignee = await (from user in dbContext.Users.AsNoTracking()
                               join department in dbContext.Departments.AsNoTracking() on user.DepartmentId equals department.Id into departments
                               from department in departments.DefaultIfEmpty()
                               where user.Id == userId
                               select new { user.DepartmentId, user.DisplayName, DepartmentName = department == null ? null : department.Name }).SingleAsync(ct);
-        dbContext.WorkflowTaskAssignments.Add(WorkflowTaskAssignment.Create("Deviation", deviation.Id, taskRole, userId, assignee.DepartmentId, now, deviation.TargetDateUtc, assignedUserNameSnapshot: assignee.DisplayName, assignedDepartmentNameSnapshot: assignee.DepartmentName));
-        var recordNumber = await dbContext.VisibleQualityRecords(currentUser).Where(x => x.Id == deviation.QualityRecordId).Select(x => x.RecordNumber).SingleAsync(ct);
-        dbContext.UserNotifications.Add(UserNotification.Create(
-            userId,
-            "M.01",
-            "Yeni sapma görevi atandı",
-            $"{recordNumber} için {TaskRoleLabel(taskRole)} görevi size atandı.",
-            $"/modules/deviations?open={deviation.Id}",
-            now));
+        return (userId, assignee.DisplayName, assignee.DepartmentId, assignee.DepartmentName);
+    }
+
+    // Mevcut adım tamamlanınca AssignRoleAsync'in atayacağı rol; sonraki adımı kullanıcı kararına bağlı durumlar için null.
+    private static (string TaskRole, bool ExcludeCreator)? NextTaskRole(Deviation deviation) => deviation.Status switch
+    {
+        DeviationStatus.Draft => (WorkflowTaskRoles.ProcessAuthority, true),
+        DeviationStatus.Submitted or DeviationStatus.PreliminaryReview => (WorkflowTaskRoles.Investigator, false),
+        DeviationStatus.ImpactAssessment => (WorkflowTaskRoles.Evaluator, true),
+        DeviationStatus.ActionImplementation => deviation.EffectivenessRequired
+            ? (WorkflowTaskRoles.Evaluator, true)
+            : (WorkflowTaskRoles.Approver, true),
+        DeviationStatus.EffectivenessReview => (WorkflowTaskRoles.Approver, true),
+        _ => null
+    };
+
+    private async Task<DeviationNextAssigneeResponse?> PreviewNextAssigneeAsync(Guid id, CancellationToken ct)
+    {
+        var routing = await (from deviation in dbContext.Deviations.AsNoTracking()
+                             join record in dbContext.QualityRecords.AsNoTracking() on deviation.QualityRecordId equals record.Id
+                             where deviation.Id == id
+                             select new { Deviation = deviation, record.CreatedByUserId }).SingleAsync(ct);
+        if (NextTaskRole(routing.Deviation) is not { } next) return null;
+        var assignee = await ResolveAssigneeAsync(routing.Deviation, next.TaskRole,
+            next.ExcludeCreator ? routing.CreatedByUserId : null, ct);
+        return new DeviationNextAssigneeResponse(next.TaskRole, assignee?.UserId, assignee?.DisplayName,
+            assignee?.DepartmentName);
     }
 
     private static string TaskRoleLabel(string taskRole) => taskRole switch
