@@ -143,49 +143,7 @@ public sealed class ElectronicSignatureService(
                     : "İmzanın anahtarlı bütünlük mührü doğrulanamadı.");
     }
 
-    internal static JsonDocument Canonicalize(JsonDocument document)
-    {
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
-            WriteCanonical(writer, document.RootElement);
-        return JsonDocument.Parse(stream.ToArray());
-    }
-
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.Object:
-                writer.WriteStartObject();
-                foreach (var property in element.EnumerateObject().OrderBy(item => item.Name, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(writer, property.Value);
-                }
-                writer.WriteEndObject();
-                break;
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in element.EnumerateArray()) WriteCanonical(writer, item);
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.String:
-                writer.WriteStringValue(element.GetString());
-                break;
-            case JsonValueKind.Number:
-                writer.WriteRawValue(element.GetRawText());
-                break;
-            case JsonValueKind.True:
-                writer.WriteBooleanValue(true);
-                break;
-            case JsonValueKind.False:
-                writer.WriteBooleanValue(false);
-                break;
-            default:
-                writer.WriteNullValue();
-                break;
-        }
-    }
+    internal static JsonDocument Canonicalize(JsonDocument document) => CanonicalJson.Canonicalize(document);
 
     private static string Hash(JsonDocument snapshot) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot.RootElement.GetRawText())));

@@ -14,13 +14,12 @@ public sealed class AuditIntegrityVerifier(QmsDbContext db, RecordIntegrityServi
         var previous = string.Empty;
         foreach (var auditEvent in events)
         {
-            var expectedHash = RecordIntegrityService.AuditHash(auditEvent, previous);
             if (auditEvent.PreviousIntegrityHash != previous
-                || !string.Equals(auditEvent.IntegrityHash, expectedHash, StringComparison.OrdinalIgnoreCase)
-                || !integrity.VerifyMac(expectedHash, auditEvent.IntegrityMac))
+                || !RecordIntegrityService.IsAuditHashValid(auditEvent, previous)
+                || !integrity.VerifyMac(auditEvent.IntegrityHash, auditEvent.IntegrityMac))
                 return new AuditIntegrityResult(false, events.Count, auditEvent.Id,
                     "Denetim izi zinciri veya anahtarlı bütünlük mührü doğrulanamadı.");
-            previous = expectedHash;
+            previous = auditEvent.IntegrityHash;
         }
         return new AuditIntegrityResult(true, events.Count, null,
             events.Count == 0 ? "Doğrulanacak denetim izi bulunamadı." : "Denetim izi zinciri doğrulandı.");

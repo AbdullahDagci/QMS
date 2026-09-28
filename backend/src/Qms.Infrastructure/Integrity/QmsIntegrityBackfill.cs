@@ -19,20 +19,24 @@ public sealed class QmsIntegrityBackfill(QmsDbContext db, RecordIntegrityService
             var key = (Type: auditEvent.AggregateType, Id: auditEvent.AggregateId);
             previous.TryGetValue(key, out var previousHash);
             previousHash ??= string.Empty;
-            var hash = RecordIntegrityService.AuditHash(auditEvent, previousHash);
-            var mac = integrity.Mac(hash);
             if (string.IsNullOrEmpty(auditEvent.IntegrityHash))
+            {
+                var hash = RecordIntegrityService.AuditHash(auditEvent, previousHash);
+                var mac = integrity.Mac(hash);
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     UPDATE audit.audit_event
                     SET "PreviousIntegrityHash" = {previousHash}, "IntegrityHash" = {hash}, "IntegrityMac" = {mac}
                     WHERE "Id" = {auditEvent.Id} AND "IntegrityHash" = ''
                     """, cancellationToken);
-            else if (auditEvent.PreviousIntegrityHash != previousHash
-                     || !string.Equals(auditEvent.IntegrityHash, hash, StringComparison.OrdinalIgnoreCase)
-                     || !integrity.VerifyMac(hash, auditEvent.IntegrityMac))
+                previous[key] = hash;
+                continue;
+            }
+            if (auditEvent.PreviousIntegrityHash != previousHash
+                || !RecordIntegrityService.IsAuditHashValid(auditEvent, previousHash)
+                || !integrity.VerifyMac(auditEvent.IntegrityHash, auditEvent.IntegrityMac))
                 throw new InvalidOperationException(
                     $"Denetim izi bütünlük ihlali algılandı. AuditEventId={auditEvent.Id}");
-            previous[key] = hash;
+            previous[key] = auditEvent.IntegrityHash;
         }
 
         var signatures = await db.ElectronicSignatures.AsNoTracking()

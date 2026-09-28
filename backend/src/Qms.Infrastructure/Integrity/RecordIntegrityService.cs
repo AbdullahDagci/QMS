@@ -47,7 +47,17 @@ public sealed class RecordIntegrityService
             && CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
     }
 
-    public static string AuditHash(AuditEvent auditEvent, string previousHash) => Hash(string.Join('|',
+    public static string AuditHash(AuditEvent auditEvent, string previousHash) =>
+        AuditHash(auditEvent, previousHash, CanonicalJson.Serialize(auditEvent.Payload.RootElement));
+
+    // Kanonik biçimden önce veritabanından okunan ham jsonb metniyle mühürlenmiş kayıtlar da doğrulanır.
+    public static bool IsAuditHashValid(AuditEvent auditEvent, string previousHash) =>
+        string.Equals(auditEvent.IntegrityHash, AuditHash(auditEvent, previousHash), StringComparison.OrdinalIgnoreCase)
+        || string.Equals(auditEvent.IntegrityHash,
+            AuditHash(auditEvent, previousHash, auditEvent.Payload.RootElement.GetRawText()),
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string AuditHash(AuditEvent auditEvent, string previousHash, string payload) => Hash(string.Join('|',
         previousHash,
         auditEvent.Id.ToString("N"),
         auditEvent.AggregateType,
@@ -56,17 +66,24 @@ public sealed class RecordIntegrityService
         auditEvent.EventType,
         auditEvent.ActorUserId.ToString("N"),
         auditEvent.ActorDisplayNameSnapshot,
-        auditEvent.OccurredAtUtc.ToUniversalTime().ToString("O"),
+        IntegrityTimestamp(auditEvent.OccurredAtUtc),
         auditEvent.CorrelationId,
         auditEvent.Reason ?? string.Empty,
-        auditEvent.Payload.RootElement.GetRawText()));
+        payload));
 
     public static string SignaturePayload(Guid qualityRecordId, long recordVersion,
         Guid signerUserId, string aggregateType, Guid aggregateId, string operation,
         string meaning, DateTimeOffset signedAtUtc, string contentHash) => string.Join('|',
             qualityRecordId.ToString("N"), recordVersion, signerUserId.ToString("N"),
             aggregateType.Trim(), aggregateId.ToString("N"), operation.Trim().ToLowerInvariant(),
-            meaning.Trim(), signedAtUtc.ToUniversalTime().ToString("O"), contentHash);
+            meaning.Trim(), IntegrityTimestamp(signedAtUtc), contentHash);
+
+    // PostgreSQL timestamptz mikro saniye saklar; .NET 100 ns üretir. Hash geri okunan değerle eşleşsin diye kırpılır.
+    private static string IntegrityTimestamp(DateTimeOffset value)
+    {
+        var ticks = value.UtcTicks;
+        return new DateTimeOffset(ticks - ticks % 10, TimeSpan.Zero).ToString("O");
+    }
 
     public static string SignaturePayload(ElectronicSignature signature) => SignaturePayload(
         signature.QualityRecordId, signature.RecordVersion, signature.SignerUserId,
