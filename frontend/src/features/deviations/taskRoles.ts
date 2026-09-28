@@ -1,5 +1,6 @@
 import type { SelectOption } from "../../components/SearchableSelect";
 
+// Görev-atama matrisinde yapılandırılabilen roller.
 export const taskRoleOptions: Array<SelectOption<string>> = [
   { value: "ProcessAuthority", label: "İşlem yetkilisi" },
   { value: "Investigator", label: "Araştırmacı" },
@@ -7,5 +8,10 @@ export const taskRoleOptions: Array<SelectOption<string>> = [
   { value: "Approver", label: "Onaylayan" },
 ];
 
-export const taskRoleLabel = (taskRole: string) =>
-  taskRoleOptions.find((option) => option.value === taskRole)?.label ?? taskRole;
+// Hazırlayan görevi matristen değil, sapmayı oluşturan kullanıcıya doğrudan atanır.
+const taskRoleLabels: Record<string, string> = {
+  Initiator: "Hazırlayan",
+  ...Object.fromEntries(taskRoleOptions.map((option) => [option.value, option.label])),
+};
+
+export const taskRoleLabel = (taskRole: string) => taskRoleLabels[taskRole] ?? taskRole;

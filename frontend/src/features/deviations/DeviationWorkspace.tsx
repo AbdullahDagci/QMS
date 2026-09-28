@@ -1086,7 +1086,8 @@ function DeviationAssignmentSettingsDialog({
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Özel bölüm/tür/RPN kuralı önce, eşitlikte yüksek öncelik önce
-          uygulanır. Eşleşme yoksa iş akışı durur.
+          uygulanır. Eşleşme yoksa iş akışı durur. Taslaktaki hazırlayan
+          görevi matristen bağımsız olarak kaydı açan kullanıcıya atanır.
         </Typography>
       </ModalHeader>
       <DialogContent>
