@@ -34,13 +34,13 @@ public static class SecurityEndpoints
             return await CreateSession(user, "Password", db, clock, context, environment, ct);
         }).AllowAnonymous().RequireRateLimiting("authentication").WithTags("Security");
 
-        endpoints.MapPost("/api/v1/auth/quick-login", async (QuickLoginRequest request, IWebHostEnvironment environment, QmsDbContext db, TimeProvider clock, HttpContext context, CancellationToken ct) =>
+        endpoints.MapPost("/api/v1/auth/quick-login", async (QuickLoginRequest request, IWebHostEnvironment environment, IConfiguration configuration, QmsDbContext db, TimeProvider clock, HttpContext context, CancellationToken ct) =>
         {
-            if (!environment.IsDevelopment()) return Results.NotFound();
+            if (!DevelopmentProfiles.AreEnabled(environment.IsDevelopment(), configuration)) return Results.NotFound();
             var user = await db.Users.SingleOrDefaultAsync(x => x.ProfileKey == request.ProfileKey && x.IsActive, ct);
             return user is null ? Results.NotFound() : await CreateSession(user, "DevelopmentQuickProfile", db, clock, context, environment, ct);
         }).AllowAnonymous().RequireRateLimiting("authentication").WithTags("Security");
-        endpoints.MapGet("/api/v1/auth/quick-profiles", (IWebHostEnvironment environment) => environment.IsDevelopment()
+        endpoints.MapGet("/api/v1/auth/quick-profiles", (IWebHostEnvironment environment, IConfiguration configuration) => DevelopmentProfiles.AreEnabled(environment.IsDevelopment(), configuration)
             ? Results.Ok(DevelopmentProfiles.All.Select(x => new DevelopmentProfileResponse(x.Key, x.DisplayName, x.DepartmentName, x.Roles)))
             : Results.NotFound()).AllowAnonymous().WithTags("Security");
 
@@ -95,7 +95,8 @@ public static class SecurityEndpoints
         endpoints.MapGet("/api/v1/auth/me", async (
                 ClaimsPrincipal user,
                 IAuthorizationService authorizationService,
-                IWebHostEnvironment environment) =>
+                IWebHostEnvironment environment,
+                IConfiguration configuration) =>
             {
                 var permissions = new List<string>();
                 foreach (var policy in QmsPolicies.All)
@@ -112,7 +113,7 @@ public static class SecurityEndpoints
                     user.FindFirstValue("qms_profile") ?? string.Empty,
                     user.FindAll(ClaimTypes.Role).Select(claim => claim.Value).ToList(),
                     permissions,
-                    (environment.IsDevelopment() ? DevelopmentProfiles.All : []).Select(profile => new DevelopmentProfileResponse(
+                    (DevelopmentProfiles.AreEnabled(environment.IsDevelopment(), configuration) ? DevelopmentProfiles.All : []).Select(profile => new DevelopmentProfileResponse(
                         profile.Key,
                         profile.DisplayName,
                         profile.DepartmentName,

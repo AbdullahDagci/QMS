@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Qms.Application.Security;
 
 namespace Qms.Infrastructure.Identity;
@@ -24,6 +25,10 @@ public sealed record DevelopmentProfile(
 
 public static class DevelopmentProfiles
 {
+    // Ücretsiz demo ortamında (DemoMode:Enabled) hızlı giriş profilleri production'da da açılır.
+    public static bool AreEnabled(bool isDevelopment, IConfiguration configuration) =>
+        isDevelopment || configuration.GetValue("DemoMode:Enabled", false);
+
     public static readonly IReadOnlyList<DevelopmentProfile> All =
     [
         new("quality", Guid.Parse("01991f70-6f40-7000-8000-000000000001"), "Elif Yılmaz", "KG", "Kalite Güvence", [QmsRoles.QualityAssurance]),

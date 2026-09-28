@@ -34,7 +34,7 @@ await scope.ServiceProvider.GetRequiredService<Qms.Infrastructure.Integrity.Fina
 await scope.ServiceProvider.GetRequiredService<Qms.Infrastructure.Security.RecordAccessBackfill>()
     .RunAsync();
 await scope.ServiceProvider.GetRequiredService<QmsIdentitySeeder>()
-    .SeedAsync(builder.Environment.IsDevelopment());
+    .SeedAsync(DevelopmentProfiles.AreEnabled(builder.Environment.IsDevelopment(), builder.Configuration));
 await scope.ServiceProvider.GetRequiredService<DatabasePrivilegeHardening>()
     .ApplyAsync();
 logger.LogInformation("QMS database migrations completed");

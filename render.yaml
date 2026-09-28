@@ -27,3 +27,6 @@ services:
         value: "10"
       - key: FileStorage__MalwareScanning__Required
         value: "false"
+      # Hızlı giriş profillerini açar: bağlantıya sahip herkes her rolle giriş yapabilir.
+      - key: DemoMode__Enabled
+        value: "true"
